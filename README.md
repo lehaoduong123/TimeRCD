@@ -20,7 +20,8 @@ conda activate Time-RCD
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/thu-sail-lab/Time-RCD.git
+git clone https://anonymous.4open.science/r/TimeRCD-5BE1/
+mv TimeRCD-5BE1 Time-RCD
 cd Time-RCD
 ```
 
@@ -58,7 +59,7 @@ pip install jaxtyping einops pandas numpy scikit-learn transformers torch torchv
 Download the pre-trained model checkpoints from Hugging Face:
 
 ```bash
-huggingface-cli download thu-sail-lab/Time_RCD checkpoints.zip
+huggingface-cli download thu-sail-lab/Time-RCD checkpoints.zip
 unzip checkpoints.zip
 cd ..
 ```
