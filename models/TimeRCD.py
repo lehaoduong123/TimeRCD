@@ -18,7 +18,6 @@ from .time_rcd.TimeRCD_pretrain_multi import TimeSeriesPretrainModel, create_ran
 from .time_rcd.time_rcd_config import TimeRCDConfig, default_config
 from ..utils.dataset import TimeRCDDataset
 
-# PYTHONPATH=/home2/lijinbo/Projects/Time_RCD-master/ python src/models/Moirai/TimeRCD_pretrain_test_multi.py
 class TimeRCDPretrainTester:
     """Tester class for visualizing pretrained model results."""
 

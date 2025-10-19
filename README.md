@@ -17,13 +17,14 @@ conda create -n Time-RCD python=3.10
 conda activate Time-RCD
 ```
 
-### 2. Clone the Repository
+### 2. Download the Repository
 
 ```bash
-git clone https://anonymous.4open.science/r/TimeRCD-5BE1/
-mv TimeRCD-5BE1 Time-RCD
-cd Time-RCD
+wget https://anonymous.4open.science/api/repo/TimeRCD-5BE1/zip -O Time-RCD.zip
+unzip Time-RCD.zip -d Time-RCD
+cd ..
 ```
+or dowload from the link: https://anonymous.4open.science/r/TimeRCD-5BE1 and unzip
 
 ### 3. Download TSB-AD Datasets
 
@@ -59,7 +60,7 @@ pip install jaxtyping einops pandas numpy scikit-learn transformers torch torchv
 Download the pre-trained model checkpoints from Hugging Face:
 
 ```bash
-huggingface-cli download thu-sail-lab/Time-RCD checkpoints.zip
+huggingface-cli download thu-sail-lab/Time-RCD checkpoints.zip --local-dir ./
 unzip checkpoints.zip
 cd ..
 ```
