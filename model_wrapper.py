@@ -451,7 +451,7 @@ def run_Time_RCD(data,  **kwargs):
                 checkpoint_path = 'Time-RCD/checkpoints/full_mask_15_56.pth'
             config.ts_config.patch_size = 32
     else:
-        checkpoint_path = 'TSB_AD_Time_RCD/checkpoints/full_mask_anomaly_head_pretrain_checkpoint_best.pth'
+        checkpoint_path = 'Time-RCD/checkpoints/full_mask_anomaly_head_pretrain_checkpoint_best.pth'
         config.ts_config.patch_size = 16
 
     config.cuda_devices = device  # Use the device parameter properly
