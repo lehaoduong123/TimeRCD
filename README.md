@@ -1,4 +1,4 @@
-# Time-RCD: Time Series Anomaly Detection with TSB-AD Benchmark
+# Towards Foundation Models for Zero-Shot Time Series Anomaly Detection: Leveraging Synthetic Data and Relative Context Discrepancy
 
 This repository contains the implementation of Time-RCD for time series anomaly detection, integrated with the TSB-AD (Time Series Benchmark for Anomaly Detection) datasets.
 
@@ -68,7 +68,7 @@ unzip checkpoints.zip
 To run anomaly detection on univariate time series:
 
 ```bash
-python main.py
+python testing.py
 ```
 
 ### Multi-Variable Time Series

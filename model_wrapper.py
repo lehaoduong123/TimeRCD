@@ -4,7 +4,7 @@ from utils.slidingWindows import find_length_rank
 
 Unsupervise_AD_Pool = ['FFT', 'SR', 'NORMA', 'Series2Graph', 'Sub_IForest', 'IForest', 'LOF', 'Sub_LOF', 'POLY', 'MatrixProfile', 'Sub_PCA', 'PCA', 'HBOS', 
                         'Sub_HBOS', 'KNN', 'Sub_KNN','KMeansAD', 'KMeansAD_U', 'KShapeAD', 'COPOD', 'CBLOF', 'COF', 'EIF', 'RobustPCA', 'Lag_Llama',
-                       'TimesFM', 'Chronos', 'MOMENT_ZS', 'DADA', 'Time_MOE', 'Time_RCD', 'Time_RCD_Reconstruction', 'Time_RCD_Reconstruction_Anomaly_Head', 'Time_RCD_Reconstruction_Random_Mask_Anomaly_Head', 'TSPulse']
+                       'TimesFM', 'Chronos', 'MOMENT_ZS', 'DADA', 'Time_MOE', 'Time_RCD',  'TSPulse']
 Semisupervise_AD_Pool = ['Left_STAMPi', 'SAND', 'MCD', 'Sub_MCD', 'OCSVM', 'Sub_OCSVM', 'AutoEncoder', 'CNN', 'LSTMAD', 'TranAD', 'USAD', 'OmniAnomaly', 
                         'AnomalyTransformer', 'TimesNet', 'FITS', 'Donut', 'OFA', 'MOMENT_FT', 'M2N2', ]
 
