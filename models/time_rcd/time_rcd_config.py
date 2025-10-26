@@ -27,6 +27,7 @@ class TimeSeriesConfig:
     use_rope: bool = True
     activation: str = "gelu"
     num_features: int = 1
+    test_batch_limit: int = 20
 
 
 @dataclass

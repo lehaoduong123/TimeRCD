@@ -2,6 +2,21 @@
 
 This repository contains the implementation of Time-RCD for time series anomaly detection, integrated with the TSB-AD (Time Series Benchmark for Anomaly Detection) datasets.
 
+## Project Structure
+
+```
+.
+├── checkpoints/          # Pre-trained model checkpoints
+├── datasets/            # TSB-AD datasets (univariate and multivariate)
+├── evaluation/          # Evaluation metrics and visualization tools
+├── models/              # Model implementations
+│   └── time_rcd/       # Time-RCD model components
+├── utils/               # Utility functions
+├── testing.py              # Main entry point
+├── model_wrapper.py     # Model wrapper for different algorithms
+└── README.md            # This file
+```
+
 ## Prerequisites
 
 - Python 3.10
@@ -76,22 +91,20 @@ python testing.py
 To run anomaly detection on multivariate time series:
 
 ```bash
-python main.py --mode multi
+python testing.py --mode multi
 ```
 
+<!-- 
+### 6. Download Training Datasets
 
-## Project Structure
+Download Training Datasets (Optional -for retraining models)
+```bash
+mkdir training_data
+huggingface-cli download thu-sail-lab/Time-RCD training_data.zip --local-dir ./
+unzip training_data.zip
+```
 
-```
-.
-├── checkpoints/          # Pre-trained model checkpoints
-├── datasets/            # TSB-AD datasets (univariate and multivariate)
-├── evaluation/          # Evaluation metrics and visualization tools
-├── models/              # Model implementations
-│   └── time_rcd/       # Time-RCD model components
-├── utils/               # Utility functions
-├── main.py              # Main entry point
-├── model_wrapper.py     # Model wrapper for different algorithms
-└── README.md            # This file
-```
+ -->
+
+
 
