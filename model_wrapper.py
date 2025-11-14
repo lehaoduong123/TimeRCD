@@ -456,6 +456,7 @@ def run_Time_RCD(data,  **kwargs):
 
     config.cuda_devices = device  # Use the device parameter properly
     print("Using CUDA device:", config.cuda_devices)
+    print("Win size:", win_size)
     config.win_size = win_size
     config.batch_size = batch_size
     config.ts_config.num_features = data.shape[1]

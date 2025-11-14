@@ -45,6 +45,7 @@ if __name__ == '__main__':
     parser.add_argument('--mode', type=str, default='uni', choices=['uni', 'multi'],
                     help='Encoder mode: uni for univariate, multi for multivariate')
     parser.add_argument('--AD_Name', type=str, default='Time_RCD')
+    parser.add_argument('--win_size', type=int, default=5000)
     parser.add_argument('--filename', type=str, default='')
     parser.add_argument('--data_direc', type=str, default='')
     parser.add_argument('--save', type=bool, default=True)
@@ -127,6 +128,7 @@ if __name__ == '__main__':
             Optimal_Det_HP = Optimal_Multi_algo_HP_dict[args.AD_Name]
         else:
             Optimal_Det_HP = Optimal_Uni_algo_HP_dict[args.AD_Name]
+        Optimal_Det_HP['win_size'] = args.win_size
         # try:
             # Read data using a proper path join
         df_path = os.path.join(args.data_direc, args.filename)
@@ -206,7 +208,7 @@ if __name__ == '__main__':
             if args.save:
                 output_filename = f'{args.filename.split(".")[0]}_results.pkl'
                 output_path = os.path.join(
-                    os.path.join(os.getcwd(), (f"{'Multi' if Multi else 'Uni'}_"+args.AD_Name), output_filename))
+                    os.path.join(os.getcwd(), (f"{'Multi' if Multi else 'Uni'}_"+args.AD_Name+"_win_"+str(args.win_size)), output_filename))
                 if not os.path.exists(output_path):
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                 pd.DataFrame({
@@ -233,14 +235,14 @@ if __name__ == '__main__':
     if all_results:
         results_df = pd.DataFrame(all_results)
         # win_size =  str(Optimal_Det_HP['win_size']) if Optimal_Det_HP['win_size'] else ""
-        output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}.csv'
+        output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}.csv'
         results_df.to_csv(output_filename, index=False)
         print(f"\nAll results saved to {output_filename}")
         print(f"Total file processed: {len(all_results)}")
         print(f"Results shape: {results_df.shape}")
         if all_logits:
             logits_df = pd.DataFrame(all_logits)
-            logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}.csv'
+            logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}.csv'
             logits_df.to_csv(logits_output_filename, index=False)
             print(f"Logits results saved to {logits_output_filename}")
     else:
