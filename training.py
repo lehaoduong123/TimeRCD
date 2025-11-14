@@ -12,8 +12,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import random
 import numpy as np
 from typing import Tuple, List, Dict, Any, Union, Optional
-
-
+import argparse
 import json
 import numpy as np
 import torch
@@ -763,9 +762,16 @@ def main() -> None:
 
     # ===== Multidataset Training Configuration =====
     # Change to True for multi-dataset training
-    use_multi_dataset_training = False
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', type=str, default='multi', choices=['multi', 'single'])
+    args = parser.parse_args()
+    # Change to True for single-dataset training
+    if args.mode == 'multi':
+        use_multi_dataset_training = True
+    else:
+        use_multi_dataset_training = False
     # Filename for single dataset training
-    single_dataset_filename = "dada_cut_0_1.pkl"
+    single_dataset_filename = "uni_data_0_1.pkl"
     # Filename list for multi-dataset training
     dataset_filenames = [
         "dataset_0_1.pkl",

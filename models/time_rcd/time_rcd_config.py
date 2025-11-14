@@ -63,10 +63,31 @@ class TimeRCDConfig:
     weight_decay: float = 1e-5
     enable_ts_train: bool = False
     seed: int = 72
+    log_freq: int = 100
+    save_freq: int = 10
+    save_step_freq: int = 100
+    model_prefix: str = "time_rcd_qa_by_pretrain"
+    test_batch_limit: int = 20
+    early_stopping_patience: int = 7
+    seed: int = 72
+    cuda_devices: str = "0, 1, 2, 3"
+    dist_port: str = "12355"     # Port for distributed training communication
+    device: str = "cuda"
 
     def to_dict(self) -> Dict[str, any]:
         return {
             "ts_config": self.ts_config.__dict__,
+            "batch_size": self.batch_size,
+            "learning_rate": self.learning_rate,
+            "num_epochs": self.num_epochs,
+            "max_seq_len": self.max_seq_len,
+            "seed": self.seed,
+            "test_batch_limit": self.test_batch_limit,
+            "log_freq": self.log_freq,
+            "save_freq": self.save_freq,
+            "save_step_freq": self.save_step_freq,
+            "model_prefix": self.model_prefix,
+            "device": self.device,
         }
 
 default_config = TimeRCDConfig()
