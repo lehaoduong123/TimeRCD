@@ -85,8 +85,8 @@ class ReconstructDataset(torch.utils.data.Dataset):
         self.stride = stride
         self.data = self._normalize_data(data) if normalize else data
         data = np.asarray(data)
-        if data.ndim == 1:
-            data = data.reshape(-1, 1)
+        # if data.ndim == 1:
+        #     data = data.reshape(-1, 1)
         self.univariate = data.shape[1] == 1
         self.sample_num = max(0, (self.data.shape[0] - window_size) // stride + 1)
         self.samples, self.targets = self._generate_samples()
