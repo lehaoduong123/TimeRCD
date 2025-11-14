@@ -31,7 +31,6 @@ import sys
 
 # Try different import approaches
 
-os.chdir("/home/lihaoyang/Huawei/TSB-AD/TSB_AD")
 
 try:
     from utils.dataset import ReconstructDataset

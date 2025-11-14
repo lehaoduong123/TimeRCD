@@ -453,7 +453,7 @@ class TimeRCDPretrainTester:
                                                   reconstructed=reconstructed.cpu().numpy(),
                                                   mask=mask_tensor[0].cpu().numpy(),
                                                   scores=score.cpu().numpy(),
-                                                  save_path=f"/home/lihaoyang/Huawei/TSB-AD/Synthetic/random_mask_anomaly_head_Time_RCD_Reconstruction_5000/plot/",
+                                                  save_path=f"plot/",
                                                   index=data_index)
 
         return scores

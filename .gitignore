@@ -133,4 +133,10 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+*.png
+*.csv
 
+responese.md
+responese.pdf
+autorank_analysis/
+autorank_analysis.py

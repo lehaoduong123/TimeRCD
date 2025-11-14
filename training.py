@@ -31,7 +31,6 @@ from models.time_rcd.time_rcd_config import TimeRCDConfig, default_config
 import warnings
 warnings.filterwarnings("ignore")
 
-# PYTHONPATH=/home2/lijinbo/Projects/AnomalyLlava-master/ python src/models/Moirai/AnomalyLlava_pretrain_multi.py
 @dataclass
 class PretrainBatch:
     """Batch structure for pretraining tasks."""
@@ -743,7 +742,6 @@ def train_worker(rank: int, world_size: int, config: TimeRCDConfig, filename: st
 
 def main() -> None:
 
-    # PYTHONPATH=/home2/lijinbo/Projects/AnomalyLlava-master/ python src/models/Moirai/AnomalyLlava_pretrain_multi.py
     """Main function to launch distributed pretraining."""
     # Load configuration
     config = default_config

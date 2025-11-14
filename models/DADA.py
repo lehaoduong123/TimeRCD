@@ -12,25 +12,6 @@ from typing import Optional, Tuple
 
 # Add debugging prints to understand the import issue
 import sys
-# print(f"Python path: {sys.path}")
-# print(f"Current working directory: {os.getcwd()}")
-# print(f"Current file location: {__file__}")
-# print(f"Current file directory: {os.path.dirname(__file__)}")
-#
-# # Check if the utils directory exists
-# utils_path = os.path.join(os.path.basename(os.path.dirname(__file__)), "utils")
-# print(f"Utils path: {utils_path}")
-# print(f"Utils directory exists: {os.path.exists(utils_path)}")
-# print(f"Utils directory contents: {os.listdir(utils_path) if os.path.exists(utils_path) else 'Directory not found'}")
-#
-# # Check if dataset.py exists
-# dataset_path = os.path.join(utils_path, "dataset.py")
-# print(f"Dataset file path: {dataset_path}")
-# print(f"Dataset file exists: {os.path.exists(dataset_path)}")
-
-# Try different import approaches
-
-os.chdir("/home/lihaoyang/Huawei/TSB-AD/TSB_AD")
 
 try:
     from utils.dataset import ReconstructDataset
@@ -73,7 +54,6 @@ class DADA(BaseDetector):
         # Try multiple possible paths
         possible_paths = [
             os.environ.get("DADA_MODEL_PATH"),  # Environment variable
-            "/home/lihaoyang/Huawei/DADA/DADA/",  # Original Linux path
             "./DADA",  # Relative path
             "DADA"  # Hugging Face model name
         ]
