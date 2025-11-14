@@ -17,21 +17,18 @@ from model_wrapper import *
 from HP_list import Optimal_Uni_algo_HP_dict, Optimal_Multi_algo_HP_dict
 import os
 # Cuda devices
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 # seeding
-seed = 2024
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-np.random.seed(seed)
-random.seed(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-import os
-print("CUDA Available: ", torch.cuda.is_available())
-print("cuDNN Version: ", torch.backends.cudnn.version())
-import pickle
 
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
 def get_result(filename):
     pickle_filename = filename.replace('.csv', '_results.pkl')
@@ -49,6 +46,8 @@ if __name__ == '__main__':
     parser.add_argument('--filename', type=str, default='')
     parser.add_argument('--data_direc', type=str, default='')
     parser.add_argument('--save', type=bool, default=True)
+    parser.add_argument('--seed', type=int, default=1)
+    set_seed(parser.parse_args().seed)
     Multi = parser.parse_args().mode == 'multi'
     # Initialize list to store all results
     all_results = []
@@ -208,7 +207,7 @@ if __name__ == '__main__':
             if args.save:
                 output_filename = f'{args.filename.split(".")[0]}_results.pkl'
                 output_path = os.path.join(
-                    os.path.join(os.getcwd(), (f"{'Multi' if Multi else 'Uni'}_"+args.AD_Name+"_win_"+str(args.win_size)), output_filename))
+                    os.path.join(os.getcwd(), (f"{'Multi' if Multi else 'Uni'}_"+args.AD_Name+"_win_"+str(args.win_size)+"_seed_"+str(args.seed)), output_filename))
                 if not os.path.exists(output_path):
                     os.makedirs(os.path.dirname(output_path), exist_ok=True)
                 pd.DataFrame({
@@ -235,14 +234,14 @@ if __name__ == '__main__':
     if all_results:
         results_df = pd.DataFrame(all_results)
         # win_size =  str(Optimal_Det_HP['win_size']) if Optimal_Det_HP['win_size'] else ""
-        output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}.csv'
+        output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}.csv'
         results_df.to_csv(output_filename, index=False)
         print(f"\nAll results saved to {output_filename}")
         print(f"Total file processed: {len(all_results)}")
         print(f"Results shape: {results_df.shape}")
         if all_logits:
             logits_df = pd.DataFrame(all_logits)
-            logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}.csv'
+            logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}.csv'
             logits_df.to_csv(logits_output_filename, index=False)
             print(f"Logits results saved to {logits_output_filename}")
     else:
