@@ -71,7 +71,11 @@ class BaselineRunner:
         self.num_features = num_features
         self.batch_size = batch_size
         default_window = getattr(config.ts_config, 'patch_size', 64) or 64
-        self.window_size = int(min(seq_len, max(64, default_window)))
+        base_window = max(64, default_window)
+        if self.name == 'dada':
+            self.window_size = 64
+        else:
+            self.window_size = int(min(seq_len, base_window))
     
     def _device_index(self) -> int:
         if self.device.type == 'cuda' and self.device.index is not None:
