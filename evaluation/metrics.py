@@ -265,7 +265,7 @@ def get_metrics(score, labels, slidingWindow=100, pred=None, version='opt', thre
     # EventF1PA = grader.metric_EventF1PA(labels, score,)
     # RF1 = grader.metric_RF1(labels, score,)
     try:
-        Affiliation_F, Affiliation_P, Affiliation_R  = grader.metric_Affiliation(labels, score)
+        Affiliation_F, Affiliation_P, Affiliation_R  = grader.metric_Affiliation_chunked(labels, score)
     except Exception:
         Affiliation_F, Affiliation_P, Affiliation_R = 0.0, 0.0, 0.0
     T_score = grader.metric_F1_T(labels, score)

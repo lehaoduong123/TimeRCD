@@ -8,6 +8,8 @@ This script profiles TimeRCD's computational complexity by measuring:
 - **Time complexity**: How inference time scales with sequence length
 - **Space complexity**: How memory usage scales with sequence length
 - **Component breakdown**: Time spent in encoder, reconstruction head, and anomaly head
+- **Training cost**: Synthetic training-step time (forward + backward)
+- **Model capacity**: Total number of learnable parameters
 
 ## Usage
 
@@ -28,7 +30,7 @@ This will run with default settings:
 ```bash
 python evaluation/complexity_analysis.py \
     --seq_lengths 5000 10000 15000 20000 25000 30000 \
-    --num_features 1 \
+    --feature_counts 1 8 16 \
     --batch_size 4 \
     --num_runs 20 \
     --device cuda \
@@ -38,7 +40,8 @@ python evaluation/complexity_analysis.py \
 ### Arguments
 
 - `--seq_lengths`: List of sequence lengths to test (default: [1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000])
-- `--num_features`: Number of features (default: 1)
+- `--num_features`: Number of features (default: 1). Ignored if `--feature_counts` is provided.
+- `--feature_counts`: Optional list of feature counts to profile. When specified, the script runs the full analysis for each count (including training timings) and stores outputs in subdirectories such as `evaluation/complexity_results/features_8`.
 - `--batch_size`: Batch size for testing (default: 1)
 - `--num_runs`: Number of runs per configuration for averaging (default: 10)
 - `--device`: Device to use - 'cuda' or 'cpu' (default: 'cuda')
@@ -56,10 +59,11 @@ The script generates:
 
 2. **`scaling_analysis.png`**: Detailed scaling analysis with fitted complexity curve
 
-3. **`complexity_report.json`**: Detailed JSON report with:
+3. **`complexity_report_features_{k}.json`**: Detailed JSON report (per feature count `k`) with:
    - Per-configuration metrics
    - Scaling factors
    - Estimated complexity classes (O(n^k))
+   - Training-step timings and parameter counts per configuration
 
 ## Example Output
 
@@ -88,11 +92,13 @@ The script measures:
 - **Encoder time**: Time spent in the TimeSeriesEncoder
 - **Reconstruction head time**: Time for reconstruction head forward pass
 - **Anomaly head time**: Time for anomaly detection head forward pass
+- **Training step time**: Approximate duration of a full training step (forward, loss, backward) with synthetic data
 
 ### Space Complexity
 
 - **Peak memory**: Maximum GPU/CPU memory used during inference
 - Measured in MB (megabytes)
+- **Model parameters**: Reported for each configuration to contextualize capacity
 
 ### Scaling Analysis
 

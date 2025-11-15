@@ -44,6 +44,7 @@ class ComplexityMetrics:
     attention_time: float
     reconstruction_head_time: float
     anomaly_head_time: float
+    training_step_time: float
     peak_memory_mb: float
     model_params: int
     flops: Optional[int] = None
@@ -56,6 +57,7 @@ class ComplexityProfiler:
         self.config = config
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         self.model = None
+        self._param_count = None
         self.hooks = []
         self.timings = {}
         
@@ -64,6 +66,7 @@ class ComplexityProfiler:
         if self.model is None:
             self.model = TimeSeriesPretrainModel(self.config).to(self.device)
             self.model.eval()
+            self._param_count = sum(p.numel() for p in self.model.parameters())
         return self.model
     
     def _hook_timing(self, name: str):
@@ -107,6 +110,26 @@ class ComplexityProfiler:
         for hook in self.hooks:
             hook.remove()
         self.hooks = []
+    
+    def _prepare_training_batch(self,
+                                time_series: torch.Tensor,
+                                attention_mask: torch.Tensor,
+                                mask_ratio: float = 0.15
+                                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Create masked inputs and labels for a synthetic training step."""
+        batch_size, seq_len, num_features = time_series.shape
+        random_mask = (torch.rand(batch_size, seq_len, device=self.device) < mask_ratio) & attention_mask
+        mask = random_mask.float()
+        
+        masked_time_series = time_series.clone()
+        mask_expanded = random_mask.unsqueeze(-1).expand(-1, -1, num_features)
+        masked_time_series[mask_expanded] = 0.0
+        
+        labels = torch.randint(0, 2, (batch_size, seq_len), device=self.device)
+        labels = labels.long()
+        labels = labels.masked_fill(~attention_mask, -1)
+        
+        return masked_time_series, mask, labels
     
     def profile_forward_pass(self, 
                              seq_len: int, 
@@ -156,6 +179,7 @@ class ComplexityProfiler:
         attention_times = []
         recon_head_times = []
         anomaly_head_times = []
+        training_step_times = []
         total_times = []
         
         with torch.no_grad():
@@ -195,6 +219,28 @@ class ComplexityProfiler:
                 total_time = time.time() - start_time
                 total_times.append(total_time)
         
+        # Simulate training step timing with backward pass
+        self.model.train()
+        for _ in range(num_runs):
+            self.model.zero_grad(set_to_none=True)
+            masked_series, mask, labels = self._prepare_training_batch(time_series, attention_mask)
+            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            train_start = time.time()
+            
+            local_embeddings = self.model(masked_series, attention_mask & (~mask.bool()))
+            recon_loss = self.model.masked_reconstruction_loss(local_embeddings, time_series, mask)
+            anomaly_loss = self.model.anomaly_detection_loss(local_embeddings, labels)
+            total_loss = recon_loss + anomaly_loss
+            total_loss.backward()
+            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            training_step_times.append(time.time() - train_start)
+        self.model.zero_grad(set_to_none=True)
+        self.model.eval()
+        
         # Measure peak memory
         if torch.cuda.is_available():
             peak_memory = torch.cuda.max_memory_allocated() / 1024**2  # MB
@@ -217,8 +263,9 @@ class ComplexityProfiler:
             attention_time=np.mean(encoder_times) * 0.8,  # Approximate attention time
             reconstruction_head_time=np.mean(recon_head_times),
             anomaly_head_time=np.mean(anomaly_head_times),
+            training_step_time=np.mean(training_step_times),
             peak_memory_mb=peak_memory,
-            model_params=total_params,
+            model_params=self._param_count if self._param_count is not None else total_params,
             flops=flops
         )
         
@@ -328,6 +375,7 @@ def plot_complexity_analysis(results: List[ComplexityMetrics],
     encoder_times = [r.encoder_time * 1000 for r in results]
     recon_times = [r.reconstruction_head_time * 1000 for r in results]
     anomaly_times = [r.anomaly_head_time * 1000 for r in results]
+    training_times = [r.training_step_time * 1000 for r in results]
     memory_usage = [r.peak_memory_mb for r in results]
     
     # Create figure with subplots
@@ -340,6 +388,7 @@ def plot_complexity_analysis(results: List[ComplexityMetrics],
     ax1.plot(seq_lengths, encoder_times, 's-', label='Encoder', linewidth=2, markersize=6)
     ax1.plot(seq_lengths, recon_times, '^-', label='Reconstruction Head', linewidth=2, markersize=6)
     ax1.plot(seq_lengths, anomaly_times, 'd-', label='Anomaly Head', linewidth=2, markersize=6)
+    ax1.plot(seq_lengths, training_times, 'x-', label='Training Step', linewidth=2, markersize=6)
     ax1.set_xlabel('Sequence Length', fontsize=12)
     ax1.set_ylabel('Time (ms)', fontsize=12)
     ax1.set_title('Time Complexity vs Sequence Length', fontsize=13, fontweight='bold')
@@ -459,6 +508,7 @@ def generate_complexity_report(results: List[ComplexityMetrics],
             "encoder_time_ms": r.encoder_time * 1000,
             "reconstruction_head_time_ms": r.reconstruction_head_time * 1000,
             "anomaly_head_time_ms": r.anomaly_head_time * 1000,
+            "training_step_time_ms": r.training_step_time * 1000,
             "peak_memory_mb": r.peak_memory_mb,
             "model_parameters": r.model_params,
             "time_per_element_ms": (r.total_time * 1000) / r.sequence_length,
@@ -492,72 +542,18 @@ def generate_complexity_report(results: List[ComplexityMetrics],
     print(f"\nComplexity report saved to: {save_path}")
 
 
-def main():
-    """Main function to run complexity analysis."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Analyze computational complexity of TimeRCD')
-    parser.add_argument('--seq_lengths', type=int, nargs='+', 
-                       default=[1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000],
-                       help='Sequence lengths to test')
-    parser.add_argument('--num_features', type=int, default=1,
-                       help='Number of features')
-    parser.add_argument('--batch_size', type=int, default=1,
-                       help='Batch size')
-    parser.add_argument('--num_runs', type=int, default=10,
-                       help='Number of runs per configuration')
-    parser.add_argument('--device', type=str, default='cuda',
-                       help='Device to use (cuda/cpu)')
-    parser.add_argument('--output_dir', type=str, default='evaluation/complexity_plots',
-                       help='Output directory for plots and reports')
-    
-    args = parser.parse_args()
-    
-    # Load configuration
-    config = default_config
-    config.ts_config.num_features = args.num_features
-    
-    print("=" * 60)
-    print("TimeRCD Computational Complexity Analysis")
-    print("=" * 60)
-    print(f"Device: {args.device}")
-    print(f"Sequence lengths: {args.seq_lengths}")
-    print(f"Features: {args.num_features}, Batch size: {args.batch_size}")
-    print(f"Runs per config: {args.num_runs}")
-    print("=" * 60)
-    
-    # Create profiler
-    profiler = ComplexityProfiler(config, device=args.device)
-    
-    # Run analysis
-    results = profiler.analyze_scaling(
-        seq_lengths=args.seq_lengths,
-        num_features=args.num_features,
-        batch_size=args.batch_size,
-        num_runs=args.num_runs
-    )
-    
-    if not results:
-        print("No results collected. Exiting.")
-        return
-    
-    # Generate visualizations
-    print("\nGenerating visualizations...")
-    plot_complexity_analysis(results, save_dir=args.output_dir)
-    
-    # Generate report
-    print("\nGenerating complexity report...")
-    report_path = os.path.join(args.output_dir, 'complexity_report.json')
-    generate_complexity_report(results, save_path=report_path)
-    
-    # Print summary
+def print_summary(feature_count: int, results: List[ComplexityMetrics]):
+    """Print summary statistics for a given feature count."""
     print("\n" + "=" * 60)
-    print("Summary")
+    print(f"Summary (num_features={feature_count})")
     print("=" * 60)
     print(f"Total configurations tested: {len(results)}")
     print(f"\nTime Complexity:")
     print(f"  Min: {min(r.total_time*1000 for r in results):.2f} ms (seq_len={min(r.sequence_length for r in results)})")
     print(f"  Max: {max(r.total_time*1000 for r in results):.2f} ms (seq_len={max(r.sequence_length for r in results)})")
+    print(f"\nTraining Step Time:")
+    print(f"  Min: {min(r.training_step_time*1000 for r in results):.2f} ms")
+    print(f"  Max: {max(r.training_step_time*1000 for r in results):.2f} ms")
     print(f"\nMemory Complexity:")
     print(f"  Min: {min(r.peak_memory_mb for r in results):.2f} MB (seq_len={min(r.sequence_length for r in results)})")
     print(f"  Max: {max(r.peak_memory_mb for r in results):.2f} MB (seq_len={max(r.sequence_length for r in results)})")
@@ -577,6 +573,81 @@ def main():
         print(f"  Memory scaling: O(n^{np.log(memory_ratio) / np.log(seq_ratio):.2f})")
     
     print("=" * 60)
+
+
+def main():
+    """Main function to run complexity analysis."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Analyze computational complexity of TimeRCD')
+    parser.add_argument('--seq_lengths', type=int, nargs='+', 
+                       default=[1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000],
+                       help='Sequence lengths to test')
+    parser.add_argument('--num_features', type=int, default=1,
+                       help='Number of features')
+    parser.add_argument('--batch_size', type=int, default=1,
+                       help='Batch size')
+    parser.add_argument('--num_runs', type=int, default=10,
+                       help='Number of runs per configuration')
+    parser.add_argument('--device', type=str, default='cuda',
+                       help='Device to use (cuda/cpu)')
+    parser.add_argument('--output_dir', type=str, default='evaluation/complexity_plots',
+                       help='Output directory for plots and reports')
+    parser.add_argument('--feature_counts', type=int, nargs='+', default=None,
+                       help='List of feature counts to test; overrides --num_features if provided')
+    
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = default_config
+    config.ts_config.num_features = args.num_features
+    
+    print("=" * 60)
+    print("TimeRCD Computational Complexity Analysis")
+    print("=" * 60)
+    print(f"Device: {args.device}")
+    print(f"Sequence lengths: {args.seq_lengths}")
+    print(f"Runs per config: {args.num_runs}")
+    print("=" * 60)
+    
+    feature_counts = args.feature_counts if args.feature_counts else [args.num_features]
+    all_results = {}
+    
+    for feature_count in feature_counts:
+        print(f"\nRunning analysis for num_features={feature_count}")
+        config.ts_config.num_features = feature_count
+        
+        profiler = ComplexityProfiler(config, device=args.device)
+        results = profiler.analyze_scaling(
+            seq_lengths=args.seq_lengths,
+            num_features=feature_count,
+            batch_size=args.batch_size,
+            num_runs=args.num_runs
+        )
+        
+        if not results:
+            print(f"No results collected for num_features={feature_count}. Skipping.")
+            continue
+        
+        feature_output_dir = args.output_dir
+        if len(feature_counts) > 1:
+            feature_output_dir = os.path.join(args.output_dir, f"features_{feature_count}")
+        
+        # Generate visualizations
+        print("\nGenerating visualizations...")
+        plot_complexity_analysis(results, save_dir=feature_output_dir)
+        
+        # Generate report
+        print("\nGenerating complexity report...")
+        report_path = os.path.join(feature_output_dir, f'complexity_report_features_{feature_count}.json')
+        generate_complexity_report(results, save_path=report_path)
+        
+        print_summary(feature_count, results)
+        all_results[feature_count] = results
+    
+    if not all_results:
+        print("No analyses were completed. Exiting.")
+        return
 
 
 if __name__ == "__main__":
