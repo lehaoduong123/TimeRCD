@@ -131,7 +131,23 @@ class BaselineRunner:
             np_data = np_data.reshape(-1, np_data.shape[-1])
         elif np_data.ndim == 1:
             np_data = np_data.reshape(-1, 1)
+        np_data = self._pad_to_window(np_data)
         return np_data
+    
+    def _pad_to_window(self, np_data: np.ndarray) -> np.ndarray:
+        """Pad (or extend) data so its length is a multiple of window_size."""
+        window = max(1, int(self.window_size))
+        length = np_data.shape[0]
+        if length < window:
+            pad_len = window - length
+        else:
+            remainder = length % window
+            pad_len = 0 if remainder == 0 else window - remainder
+        if pad_len == 0:
+            return np_data
+        pad_values = np_data[-1:, :]
+        pad = np.repeat(pad_values, pad_len, axis=0)
+        return np.concatenate([np_data, pad], axis=0)
     
     def run_inference(self, data: torch.Tensor):
         model = self.get_model()
