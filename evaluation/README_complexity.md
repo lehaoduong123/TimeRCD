@@ -78,8 +78,8 @@ Runs per config: 10
 Analyzing scaling behavior with 8 sequence lengths...
 Features: 1, Batch size: 1
 ------------------------------------------------------------
-Testing sequence length: 1000... ✓ (Time: 12.34ms, Memory: 45.67MB)
-Testing sequence length: 2000... ✓ (Time: 23.45ms, Memory: 67.89MB)
+Testing sequence length: 1000... ✓ (Infer: 12.34ms, Train: 21.05ms, Memory: 45.67MB)
+Testing sequence length: 2000... ✓ (Infer: 23.45ms, Train: 38.12ms, Memory: 67.89MB)
 ...
 ```
 

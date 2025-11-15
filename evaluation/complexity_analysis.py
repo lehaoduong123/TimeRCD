@@ -304,7 +304,11 @@ class ComplexityProfiler:
                     num_runs=num_runs
                 )
                 results.append(metrics)
-                print(f"✓ (Time: {metrics.total_time*1000:.2f}ms, Memory: {metrics.peak_memory_mb:.2f}MB)")
+                print(
+                    f"✓ (Infer: {metrics.total_time*1000:.2f}ms, "
+                    f"Train: {metrics.training_step_time*1000:.2f}ms, "
+                    f"Memory: {metrics.peak_memory_mb:.2f}MB)"
+                )
             except Exception as e:
                 print(f"✗ Error: {e}")
                 continue
