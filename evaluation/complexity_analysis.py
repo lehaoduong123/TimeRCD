@@ -50,12 +50,132 @@ class ComplexityMetrics:
     flops: Optional[int] = None
 
 
+class BaselineRunner:
+    """Adapter to profile third-party baseline models."""
+    
+    _model_cache: Dict[Tuple[str, int, int, int, int], object] = {}
+    
+    def __init__(
+        self,
+        name: str,
+        device: torch.device,
+        config: TimeRCDConfig,
+        seq_len: int,
+        num_features: int,
+        batch_size: int,
+    ):
+        self.name = name.lower()
+        self.device = device
+        self.config = config
+        self.seq_len = seq_len
+        self.num_features = num_features
+        self.batch_size = batch_size
+        default_window = getattr(config.ts_config, 'patch_size', 64) or 64
+        self.window_size = int(min(seq_len, max(64, default_window)))
+    
+    def _device_index(self) -> int:
+        if self.device.type == 'cuda' and self.device.index is not None:
+            return self.device.index
+        return 0
+    
+    def _cache_key(self) -> Tuple[str, int, int, int, int]:
+        device_type = 0 if self.device.type == 'cpu' else 1
+        device_idx = self._device_index()
+        return (self.name, device_type, device_idx, self.num_features, self.window_size)
+    
+    def _instantiate_model(self):
+        if self.name == 'dada':
+            from models.DADA import DADA as DADAModel
+            return DADAModel(
+                device=self._device_index(),
+                win_size=self.window_size,
+                batch_size=self.batch_size
+            )
+        if self.name in ('timemoe', 'time_moe', 'time-moe'):
+            from models.time_moe import Time_MOE
+            return Time_MOE(
+                device=self._device_index(),
+                win_size=self.window_size,
+                batch_size=self.batch_size
+            )
+        if self.name == 'chronos':
+            from models.Chronos import Chronos
+            return Chronos(
+                win_size=self.window_size,
+                prediction_length=1,
+                input_c=self.num_features,
+                batch_size=self.batch_size
+            )
+        if self.name == 'timesfm':
+            from models.TimesFM import TimesFM
+            return TimesFM(
+                win_size=self.window_size,
+                prediction_length=1,
+                input_c=self.num_features
+            )
+        raise ValueError(f"Unsupported baseline model: {self.name}")
+    
+    def get_model(self):
+        key = self._cache_key()
+        if key not in self._model_cache:
+            self._model_cache[key] = self._instantiate_model()
+        return self._model_cache[key]
+    
+    def _prepare_numpy(self, data: torch.Tensor) -> np.ndarray:
+        if isinstance(data, torch.Tensor):
+            np_data = data.detach().cpu().float().numpy()
+        else:
+            np_data = np.asarray(data, dtype=np.float32)
+        if np_data.ndim == 3:
+            # (B, T, C) -> (T * B, C)
+            np_data = np_data.reshape(-1, np_data.shape[-1])
+        elif np_data.ndim == 1:
+            np_data = np_data.reshape(-1, 1)
+        return np_data
+    
+    def run_inference(self, data: torch.Tensor):
+        model = self.get_model()
+        np_data = self._prepare_numpy(data)
+        if self.name == 'dada':
+            return model.zero_shot(np_data)
+        if self.name in ('timemoe', 'time_moe', 'time-moe'):
+            return model.zero_shot(np_data)
+        if self.name == 'chronos':
+            model.score_list = []
+            model.fit(np_data)
+            return getattr(model, 'decision_scores_', None)
+        if self.name == 'timesfm':
+            model.score_list = []
+            model.fit(np_data)
+            return getattr(model, 'decision_scores_', None)
+        raise ValueError(f"Inference not implemented for baseline {self.name}")
+    
+    def supports_training(self) -> bool:
+        return False
+    
+    def run_training_step(self, data: torch.Tensor):
+        raise NotImplementedError("Training is not supported for this baseline.")
+    
+    def parameter_count(self) -> Optional[int]:
+        model = self.get_model()
+        inner = getattr(model, 'model', None)
+        target = inner if inner is not None else model
+        parameters = getattr(target, 'parameters', None)
+        if callable(parameters):
+            try:
+                return sum(p.numel() for p in parameters())
+            except Exception:
+                return None
+        return None
+
+
 class ComplexityProfiler:
     """Profiler for analyzing computational complexity of TimeRCD."""
     
-    def __init__(self, config: TimeRCDConfig, device: str = "cuda"):
+    def __init__(self, config: TimeRCDConfig, device: str = "cuda", model_name: str = "timercd"):
         self.config = config
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.model_name = model_name.lower()
         self.model = None
         self._param_count = None
         self.hooks = []
@@ -63,6 +183,8 @@ class ComplexityProfiler:
         
     def _setup_model(self):
         """Initialize the model for profiling."""
+        if self.model_name != "timercd":
+            return None
         if self.model is None:
             self.model = TimeSeriesPretrainModel(self.config).to(self.device)
             self.model.eval()
@@ -137,19 +259,28 @@ class ComplexityProfiler:
                              batch_size: int = 1,
                              num_runs: int = 10,
                              warmup_runs: int = 3) -> ComplexityMetrics:
-        """
-        Profile a single forward pass with given parameters.
-        
-        Args:
-            seq_len: Sequence length
-            num_features: Number of features
-            batch_size: Batch size
-            num_runs: Number of runs for averaging
-            warmup_runs: Number of warmup runs
-            
-        Returns:
-            ComplexityMetrics object with timing and memory information
-        """
+        if self.model_name == "timercd":
+            return self._profile_timercd(
+                seq_len=seq_len,
+                num_features=num_features,
+                batch_size=batch_size,
+                num_runs=num_runs,
+                warmup_runs=warmup_runs
+            )
+        return self._profile_baseline(
+            seq_len=seq_len,
+            num_features=num_features,
+            batch_size=batch_size,
+            num_runs=num_runs
+        )
+
+    def _profile_timercd(self,
+                         seq_len: int,
+                         num_features: int,
+                         batch_size: int,
+                         num_runs: int,
+                         warmup_runs: int) -> ComplexityMetrics:
+        """Profile the native TimeRCD model."""
         self._setup_model()
         self.config.ts_config.num_features = num_features
         
@@ -167,23 +298,17 @@ class ComplexityProfiler:
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
         
-        # Measure memory before
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
-            initial_memory = torch.cuda.memory_allocated() / 1024**2  # MB
-        else:
-            initial_memory = 0
-        
         # Timing measurements
         encoder_times = []
-        attention_times = []
         recon_head_times = []
         anomaly_head_times = []
         training_step_times = []
         total_times = []
         
         with torch.no_grad():
-            for run in range(num_runs):
+            for _ in range(num_runs):
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                 
@@ -241,26 +366,21 @@ class ComplexityProfiler:
         self.model.zero_grad(set_to_none=True)
         self.model.eval()
         
-        # Measure peak memory
         if torch.cuda.is_available():
             peak_memory = torch.cuda.max_memory_allocated() / 1024**2  # MB
         else:
             peak_memory = 0
         
-        # Count model parameters
         total_params = sum(p.numel() for p in self.model.parameters())
-        
-        # Estimate FLOPs
         flops = self.estimate_flops(seq_len, num_features, batch_size)
         
-        # Calculate average times
-        metrics = ComplexityMetrics(
+        return ComplexityMetrics(
             sequence_length=seq_len,
             num_features=num_features,
             batch_size=batch_size,
             total_time=np.mean(total_times),
             encoder_time=np.mean(encoder_times),
-            attention_time=np.mean(encoder_times) * 0.8,  # Approximate attention time
+            attention_time=np.mean(encoder_times) * 0.8,
             reconstruction_head_time=np.mean(recon_head_times),
             anomaly_head_time=np.mean(anomaly_head_times),
             training_step_time=np.mean(training_step_times),
@@ -268,8 +388,62 @@ class ComplexityProfiler:
             model_params=self._param_count if self._param_count is not None else total_params,
             flops=flops
         )
+    
+    def _profile_baseline(self,
+                          seq_len: int,
+                          num_features: int,
+                          batch_size: int,
+                          num_runs: int) -> ComplexityMetrics:
+        """Profile external baseline models such as DADA, TimeMoE, Chronos, TimesFM."""
+        runner = BaselineRunner(
+            name=self.model_name,
+            device=self.device,
+            config=self.config,
+            seq_len=seq_len,
+            num_features=num_features,
+            batch_size=batch_size
+        )
         
-        return metrics
+        time_series = torch.randn(batch_size, seq_len, num_features, device=self.device)
+        attention_mask = torch.ones(batch_size, seq_len, dtype=torch.bool, device=self.device)
+        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+        
+        total_times = []
+        for _ in range(num_runs):
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            start = time.time()
+            runner.run_inference(time_series)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            total_times.append(time.time() - start)
+        
+        if torch.cuda.is_available():
+            peak_memory = torch.cuda.max_memory_allocated() / 1024**2  # MB
+        else:
+            peak_memory = 0
+        
+        avg_total = np.mean(total_times)
+        param_count = runner.parameter_count()
+        
+        return ComplexityMetrics(
+            sequence_length=seq_len,
+            num_features=num_features,
+            batch_size=batch_size,
+            total_time=avg_total,
+            encoder_time=avg_total,
+            attention_time=avg_total,
+            reconstruction_head_time=0.0,
+            anomaly_head_time=0.0,
+            training_step_time=float('nan'),
+            peak_memory_mb=peak_memory,
+            model_params=param_count if param_count is not None else 0,
+            flops=None
+        )
     
     def analyze_scaling(self,
                        seq_lengths: List[int],
@@ -304,9 +478,11 @@ class ComplexityProfiler:
                     num_runs=num_runs
                 )
                 results.append(metrics)
+                train_ms = metrics.training_step_time * 1000
+                train_text = f"{train_ms:.2f}ms" if np.isfinite(train_ms) else "N/A"
                 print(
                     f"✓ (Infer: {metrics.total_time*1000:.2f}ms, "
-                    f"Train: {metrics.training_step_time*1000:.2f}ms, "
+                    f"Train: {train_text}, "
                     f"Memory: {metrics.peak_memory_mb:.2f}MB)"
                 )
             except Exception as e:
@@ -379,7 +555,10 @@ def plot_complexity_analysis(results: List[ComplexityMetrics],
     encoder_times = [r.encoder_time * 1000 for r in results]
     recon_times = [r.reconstruction_head_time * 1000 for r in results]
     anomaly_times = [r.anomaly_head_time * 1000 for r in results]
-    training_times = [r.training_step_time * 1000 for r in results]
+    training_times = [
+        r.training_step_time * 1000 if np.isfinite(r.training_step_time) else np.nan
+        for r in results
+    ]
     memory_usage = [r.peak_memory_mb for r in results]
     
     # Create figure with subplots
@@ -392,7 +571,9 @@ def plot_complexity_analysis(results: List[ComplexityMetrics],
     ax1.plot(seq_lengths, encoder_times, 's-', label='Encoder', linewidth=2, markersize=6)
     ax1.plot(seq_lengths, recon_times, '^-', label='Reconstruction Head', linewidth=2, markersize=6)
     ax1.plot(seq_lengths, anomaly_times, 'd-', label='Anomaly Head', linewidth=2, markersize=6)
-    ax1.plot(seq_lengths, training_times, 'x-', label='Training Step', linewidth=2, markersize=6)
+    training_array = np.array(training_times, dtype=float)
+    if np.isfinite(training_array).any():
+        ax1.plot(seq_lengths, training_array, 'x-', label='Training Step', linewidth=2, markersize=6)
     ax1.set_xlabel('Sequence Length', fontsize=12)
     ax1.set_ylabel('Time (ms)', fontsize=12)
     ax1.set_title('Time Complexity vs Sequence Length', fontsize=13, fontweight='bold')
@@ -504,6 +685,7 @@ def generate_complexity_report(results: List[ComplexityMetrics],
     }
     
     for r in results:
+        training_time_ms = r.training_step_time * 1000 if np.isfinite(r.training_step_time) else None
         report["results"].append({
             "sequence_length": r.sequence_length,
             "num_features": r.num_features,
@@ -512,7 +694,7 @@ def generate_complexity_report(results: List[ComplexityMetrics],
             "encoder_time_ms": r.encoder_time * 1000,
             "reconstruction_head_time_ms": r.reconstruction_head_time * 1000,
             "anomaly_head_time_ms": r.anomaly_head_time * 1000,
-            "training_step_time_ms": r.training_step_time * 1000,
+            "training_step_time_ms": training_time_ms,
             "peak_memory_mb": r.peak_memory_mb,
             "model_parameters": r.model_params,
             "time_per_element_ms": (r.total_time * 1000) / r.sequence_length,
@@ -546,18 +728,22 @@ def generate_complexity_report(results: List[ComplexityMetrics],
     print(f"\nComplexity report saved to: {save_path}")
 
 
-def print_summary(feature_count: int, results: List[ComplexityMetrics]):
+def print_summary(model_name: str, feature_count: int, results: List[ComplexityMetrics]):
     """Print summary statistics for a given feature count."""
     print("\n" + "=" * 60)
-    print(f"Summary (num_features={feature_count})")
+    print(f"Summary | model={model_name} | num_features={feature_count}")
     print("=" * 60)
     print(f"Total configurations tested: {len(results)}")
     print(f"\nTime Complexity:")
     print(f"  Min: {min(r.total_time*1000 for r in results):.2f} ms (seq_len={min(r.sequence_length for r in results)})")
     print(f"  Max: {max(r.total_time*1000 for r in results):.2f} ms (seq_len={max(r.sequence_length for r in results)})")
-    print(f"\nTraining Step Time:")
-    print(f"  Min: {min(r.training_step_time*1000 for r in results):.2f} ms")
-    print(f"  Max: {max(r.training_step_time*1000 for r in results):.2f} ms")
+    training_values = [r.training_step_time*1000 for r in results if np.isfinite(r.training_step_time)]
+    if training_values:
+        print(f"\nTraining Step Time:")
+        print(f"  Min: {min(training_values):.2f} ms")
+        print(f"  Max: {max(training_values):.2f} ms")
+    else:
+        print("\nTraining Step Time: N/A (baseline does not expose training)")
     print(f"\nMemory Complexity:")
     print(f"  Min: {min(r.peak_memory_mb for r in results):.2f} MB (seq_len={min(r.sequence_length for r in results)})")
     print(f"  Max: {max(r.peak_memory_mb for r in results):.2f} MB (seq_len={max(r.sequence_length for r in results)})")
@@ -597,13 +783,16 @@ def main():
                        help='Device to use (cuda/cpu)')
     parser.add_argument('--cuda_devices', type=str, default='1',
                        help='CUDA devices to use')
+    parser.add_argument('--model_name', type=str, default='timercd',
+                       choices=['timercd', 'dada', 'timemoe', 'chronos', 'timesfm'],
+                       help='Model/baseline to profile')
     parser.add_argument('--output_dir', type=str, default='evaluation/complexity_plots',
                        help='Output directory for plots and reports')
     parser.add_argument('--feature_counts', type=int, nargs='+', default=None,
                        help='List of feature counts to test; overrides --num_features if provided')
     
     args = parser.parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.device
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_devices
     # Load configuration
     config = default_config
     config.ts_config.num_features = args.num_features
@@ -612,18 +801,21 @@ def main():
     print("TimeRCD Computational Complexity Analysis")
     print("=" * 60)
     print(f"Device: {args.device}")
+    print(f"Model: {args.model_name}")
     print(f"Sequence lengths: {args.seq_lengths}")
     print(f"Runs per config: {args.num_runs}")
     print("=" * 60)
     
     feature_counts = args.feature_counts if args.feature_counts else [args.num_features]
     all_results = {}
+    model_output_dir = os.path.join(args.output_dir, args.model_name.lower())
+    os.makedirs(model_output_dir, exist_ok=True)
     
     for feature_count in feature_counts:
         print(f"\nRunning analysis for num_features={feature_count}")
         config.ts_config.num_features = feature_count
         
-        profiler = ComplexityProfiler(config, device=args.device)
+        profiler = ComplexityProfiler(config, device=args.device, model_name=args.model_name)
         results = profiler.analyze_scaling(
             seq_lengths=args.seq_lengths,
             num_features=feature_count,
@@ -635,9 +827,10 @@ def main():
             print(f"No results collected for num_features={feature_count}. Skipping.")
             continue
         
-        feature_output_dir = args.output_dir
+        feature_output_dir = model_output_dir
         if len(feature_counts) > 1:
-            feature_output_dir = os.path.join(args.output_dir, f"features_{feature_count}")
+            feature_output_dir = os.path.join(model_output_dir, f"features_{feature_count}")
+        os.makedirs(feature_output_dir, exist_ok=True)
         
         # Generate visualizations
         print("\nGenerating visualizations...")
@@ -648,7 +841,7 @@ def main():
         report_path = os.path.join(feature_output_dir, f'complexity_report_features_{feature_count}.json')
         generate_complexity_report(results, save_path=report_path)
         
-        print_summary(feature_count, results)
+        print_summary(args.model_name, feature_count, results)
         all_results[feature_count] = results
     
     if not all_results:
