@@ -595,13 +595,15 @@ def main():
                        help='Number of runs per configuration')
     parser.add_argument('--device', type=str, default='cuda',
                        help='Device to use (cuda/cpu)')
+    parser.add_argument('--cuda_devices', type=str, default='1',
+                       help='CUDA devices to use')
     parser.add_argument('--output_dir', type=str, default='evaluation/complexity_plots',
                        help='Output directory for plots and reports')
     parser.add_argument('--feature_counts', type=int, nargs='+', default=None,
                        help='List of feature counts to test; overrides --num_features if provided')
     
     args = parser.parse_args()
-    
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     # Load configuration
     config = default_config
     config.ts_config.num_features = args.num_features
