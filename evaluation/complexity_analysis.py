@@ -230,10 +230,29 @@ class BaselineRunner:
         if self.name in ('timemoe', 'time_moe', 'time-moe'):
             return model.zero_shot(chunk)
         if self.name == 'chronos':
+            # Ensure data is properly formatted for Chronos
+            # Chronos expects (n_samples, n_features) numpy array with numeric dtype
+            chunk = np.asarray(chunk, dtype=np.float32)
+            if chunk.ndim == 1:
+                chunk = chunk.reshape(-1, 1)
+            elif chunk.ndim == 2 and chunk.shape[1] != self.num_features:
+                # Reshape if needed
+                if chunk.shape[1] > self.num_features:
+                    chunk = chunk[:, :self.num_features]
+                else:
+                    # Pad if needed
+                    pad_width = ((0, 0), (0, self.num_features - chunk.shape[1]))
+                    chunk = np.pad(chunk, pad_width, mode='constant', constant_values=0.0)
+            # Ensure no NaN or inf values
+            chunk = np.nan_to_num(chunk, nan=0.0, posinf=0.0, neginf=0.0)
             model.score_list = []
-            model.fit(chunk)
-            scores = getattr(model, 'decision_scores_', None)
-            return scores if scores is not None else np.zeros(len(chunk))
+            try:
+                model.fit(chunk)
+                scores = getattr(model, 'decision_scores_', None)
+                return scores if scores is not None else np.zeros(len(chunk))
+            except Exception as e:
+                print(f"Warning: Chronos fit failed: {e}")
+                return np.zeros(len(chunk))
         if self.name == 'timesfm':
             model.score_list = []
             model.fit(chunk)

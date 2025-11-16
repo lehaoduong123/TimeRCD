@@ -41,9 +41,13 @@ class Chronos(BaseDetector):
             count = 0
             for id in range(data_win.shape[0]):
                 for tt in range(data_win.shape[1]):
-                    train_data.append([id, count, data_win[id, tt]])
+                    # Ensure target value is a Python float to avoid dtype issues
+                    target_val = float(data_win[id, tt])
+                    train_data.append([id, count, target_val])
                     count += 1
             train_data = pd.DataFrame(train_data, columns=['item_id', 'timestamp', 'target'])
+            # Explicitly ensure target column is numeric
+            train_data['target'] = pd.to_numeric(train_data['target'], errors='coerce')
 
             with tempfile.TemporaryDirectory() as temp_dir:
 
