@@ -1490,212 +1490,212 @@ class basic_metricor():
 
         return best_result['f1'], best_result['precision'], best_result['recall']
 
-    def metric_Affiliation_chunked(self, label, score, chunk_size=30, num_workers=4):
-        """
-        Simple chunked parallel processing
-        """
-        print(f"Computing Affiliation (chunked) with {num_workers} workers, chunk_size={chunk_size}")
-        start_time = time.time()
+    # def metric_Affiliation_chunked(self, label, score, chunk_size=30, num_workers=4):
+    #     """
+    #     Simple chunked parallel processing
+    #     """
+    #     print(f"Computing Affiliation (chunked) with {num_workers} workers, chunk_size={chunk_size}")
+    #     start_time = time.time()
 
-        # Generate p-values
-        p_values = np.linspace(0.8, 1, 300)
+    #     # Generate p-values
+    #     p_values = np.linspace(0.8, 1, 300)
 
-        # Create chunks of p-values
-        p_value_chunks = [p_values[i:i + chunk_size]
-                          for i in range(0, len(p_values), chunk_size)]
+    #     # Create chunks of p-values
+    #     p_value_chunks = [p_values[i:i + chunk_size]
+    #                       for i in range(0, len(p_values), chunk_size)]
 
-        # Prepare arguments for workers
-        chunk_args = [(chunk, label, score) for chunk in p_value_chunks]
+    #     # Prepare arguments for workers
+    #     chunk_args = [(chunk, label, score) for chunk in p_value_chunks]
 
-        # Process in parallel
-        all_results = []
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            for i, result_chunk in enumerate(executor.map(self._process_affiliation_chunk, chunk_args)):
-                all_results.extend(result_chunk)
-                print(f"Progress: {(i + 1) * chunk_size}/{len(p_values)} thresholds processed", end='\r')
+    #     # Process in parallel
+    #     all_results = []
+    #     with ProcessPoolExecutor(max_workers=num_workers) as executor:
+    #         for i, result_chunk in enumerate(executor.map(self._process_affiliation_chunk, chunk_args)):
+    #             all_results.extend(result_chunk)
+    #             print(f"Progress: {(i + 1) * chunk_size}/{len(p_values)} thresholds processed", end='\r')
 
-        print()  # New line
+    #     print()  # New line
 
-        # Find best result
-        best_result = max(all_results, key=lambda x: x['f1'])
+    #     # Find best result
+    #     best_result = max(all_results, key=lambda x: x['f1'])
 
-        elapsed = time.time() - start_time
-        print(f"Affiliation computed in {elapsed:.2f}s")
+    #     elapsed = time.time() - start_time
+    #     print(f"Affiliation computed in {elapsed:.2f}s")
 
-        return best_result['f1'], best_result['precision'], best_result['recall']
+    #     return best_result['f1'], best_result['precision'], best_result['recall']
 
-    def _compute_affiliation_chunk(self, p_values_chunk, score, label, eps=1e-7):
-        """
-        Process a chunk of p-values for affiliation metrics
-        """
-        from .affiliation.generics import convert_vector_to_events
-        from .affiliation.metrics import pr_from_events
+    # def _compute_affiliation_chunk(self, p_values_chunk, score, label, eps=1e-7):
+    #     """
+    #     Process a chunk of p-values for affiliation metrics
+    #     """
+    #     from .affiliation.generics import convert_vector_to_events
+    #     from .affiliation.metrics import pr_from_events
         
-        # Ensure proper data types to avoid float/integer issues
-        label = np.asarray(label, dtype=int)
-        score = np.asarray(score, dtype=float)
+    #     # Ensure proper data types to avoid float/integer issues
+    #     label = np.asarray(label, dtype=int)
+    #     score = np.asarray(score, dtype=float)
         
-        # Convert ground truth to events once for this chunk
-        events_gt = convert_vector_to_events(label)
-        Trange = (0, len(label))
+    #     # Convert ground truth to events once for this chunk
+    #     events_gt = convert_vector_to_events(label)
+    #     Trange = (0, len(label))
         
-        chunk_results = []
-        for p in p_values_chunk:
-            threshold = np.quantile(score, p)
-            preds_loop = (score > threshold).astype(int)
+    #     chunk_results = []
+    #     for p in p_values_chunk:
+    #         threshold = np.quantile(score, p)
+    #         preds_loop = (score > threshold).astype(int)
             
-            events_pred = convert_vector_to_events(preds_loop)
-            affiliation_metrics = pr_from_events(events_pred, events_gt, Trange)
+    #         events_pred = convert_vector_to_events(preds_loop)
+    #         affiliation_metrics = pr_from_events(events_pred, events_gt, Trange)
             
-            Affiliation_Precision = affiliation_metrics['Affiliation_Precision']
-            Affiliation_Recall = affiliation_metrics['Affiliation_Recall']
+    #         Affiliation_Precision = affiliation_metrics['Affiliation_Precision']
+    #         Affiliation_Recall = affiliation_metrics['Affiliation_Recall']
             
-            denominator = Affiliation_Precision + Affiliation_Recall
-            if denominator > 0:
-                Affiliation_F = 2 * Affiliation_Precision * Affiliation_Recall / (denominator + eps)
-            else:
-                Affiliation_F = 0.0
+    #         denominator = Affiliation_Precision + Affiliation_Recall
+    #         if denominator > 0:
+    #             Affiliation_F = 2 * Affiliation_Precision * Affiliation_Recall / (denominator + eps)
+    #         else:
+    #             Affiliation_F = 0.0
             
-            chunk_results.append({
-                'f1': Affiliation_F,
-                'precision': Affiliation_Precision,
-                'recall': Affiliation_Recall,
-                'p_value': p,
-                'threshold': threshold
-            })
+    #         chunk_results.append({
+    #             'f1': Affiliation_F,
+    #             'precision': Affiliation_Precision,
+    #             'recall': Affiliation_Recall,
+    #             'p_value': p,
+    #             'threshold': threshold
+    #         })
         
-        return chunk_results
+    #     return chunk_results
 
-    def _compute_affiliation_parallel(self, label, score, num_workers=8):
-        """
-        Parallel computation with progress bar
-        """
-        print(f"Computing Affiliation (parallel) with {num_workers} workers")
-        start_time = time.time()
+    # def _compute_affiliation_parallel(self, label, score, num_workers=8):
+    #     """
+    #     Parallel computation with progress bar
+    #     """
+    #     print(f"Computing Affiliation (parallel) with {num_workers} workers")
+    #     start_time = time.time()
 
-        # Generate p-values
-        p_values = np.linspace(0.8, 1, 300)
-        total_thresholds = len(p_values)
+    #     # Generate p-values
+    #     p_values = np.linspace(0.8, 1, 300)
+    #     total_thresholds = len(p_values)
 
-        # Split p-values into chunks for parallel processing
-        p_value_chunks = np.array_split(p_values, num_workers)
+    #     # Split p-values into chunks for parallel processing
+    #     p_value_chunks = np.array_split(p_values, num_workers)
 
-        # Process chunks in parallel with progress bar
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            # Submit all tasks and track chunk sizes
-            futures = {}
-            for i, chunk in enumerate(p_value_chunks):
-                future = executor.submit(self._compute_affiliation_chunk, chunk, score, label)
-                futures[future] = len(chunk)
+    #     # Process chunks in parallel with progress bar
+    #     with ProcessPoolExecutor(max_workers=num_workers) as executor:
+    #         # Submit all tasks and track chunk sizes
+    #         futures = {}
+    #         for i, chunk in enumerate(p_value_chunks):
+    #             future = executor.submit(self._compute_affiliation_chunk, chunk, score, label)
+    #             futures[future] = len(chunk)
 
-            # Collect results with progress bar
-            all_results = []
-            with tqdm(
-                    total=total_thresholds,
-                    desc="Computing affiliation metrics",
-                    unit="threshold",
-                    colour="green"
-            ) as pbar:
-                for future in as_completed(futures):
-                    chunk_results = future.result()
-                    all_results.extend(chunk_results)
-                    # Update by the number of thresholds processed in this chunk
-                    pbar.update(futures[future])
+    #         # Collect results with progress bar
+    #         all_results = []
+    #         with tqdm(
+    #                 total=total_thresholds,
+    #                 desc="Computing affiliation metrics",
+    #                 unit="threshold",
+    #                 colour="green"
+    #         ) as pbar:
+    #             for future in as_completed(futures):
+    #                 chunk_results = future.result()
+    #                 all_results.extend(chunk_results)
+    #                 # Update by the number of thresholds processed in this chunk
+    #                 pbar.update(futures[future])
 
-        # Find best result
-        best_result = max(all_results, key=lambda x: x['f1'])
+    #     # Find best result
+    #     best_result = max(all_results, key=lambda x: x['f1'])
 
-        elapsed = time.time() - start_time
-        print(f"Affiliation computed in {elapsed:.2f}s")
+    #     elapsed = time.time() - start_time
+    #     print(f"Affiliation computed in {elapsed:.2f}s")
 
-        return best_result['f1'], best_result['precision'], best_result['recall']
+    #     return best_result['f1'], best_result['precision'], best_result['recall']
 
-    def metric_Affiliation_optimized(self, label, score, num_workers=None):
-        """
-        Optimized version with ThreadPool and better chunking
-        """
-        if num_workers is None:
-            num_workers = min(mp.cpu_count(), 8)
+    # def metric_Affiliation_optimized(self, label, score, num_workers=None):
+    #     """
+    #     Optimized version with ThreadPool and better chunking
+    #     """
+    #     if num_workers is None:
+    #         num_workers = min(mp.cpu_count(), 8)
 
-        print(f"Computing Affiliation (optimized) with {num_workers} workers")
-        start_time = time.time()
+    #     print(f"Computing Affiliation (optimized) with {num_workers} workers")
+    #     start_time = time.time()
 
-        from .affiliation.generics import convert_vector_to_events
-        from .affiliation.metrics import pr_from_events
+    #     from .affiliation.generics import convert_vector_to_events
+    #     from .affiliation.metrics import pr_from_events
 
-        # Pre-compute ground truth events once
-        events_gt = convert_vector_to_events(label)
-        Trange = (0, len(label))
+    #     # Pre-compute ground truth events once
+    #     events_gt = convert_vector_to_events(label)
+    #     Trange = (0, len(label))
 
-        # Generate p-values and thresholds
-        p_values = np.linspace(0.8, 1, 300)
+    #     # Generate p-values and thresholds
+    #     p_values = np.linspace(0.8, 1, 300)
 
-        # Pre-compute all thresholds
-        thresholds = np.quantile(score, p_values)
+    #     # Pre-compute all thresholds
+    #     thresholds = np.quantile(score, p_values)
 
-        # Pre-compute all predictions
-        print("Pre-computing predictions...")
-        all_predictions = []
-        for threshold in thresholds:
-            preds = (score > threshold).astype(int)
-            all_predictions.append(preds)
+    #     # Pre-compute all predictions
+    #     print("Pre-computing predictions...")
+    #     all_predictions = []
+    #     for threshold in thresholds:
+    #         preds = (score > threshold).astype(int)
+    #         all_predictions.append(preds)
 
-        print("Computing affiliation metrics...")
+    #     print("Computing affiliation metrics...")
 
-        # Function to process a batch of indices
-        def compute_metrics_batch(indices):
-            results = []
-            for idx in indices:
-                preds = all_predictions[idx]
+    #     # Function to process a batch of indices
+    #     def compute_metrics_batch(indices):
+    #         results = []
+    #         for idx in indices:
+    #             preds = all_predictions[idx]
 
-                events_pred = convert_vector_to_events(preds)
-                affiliation_metrics = pr_from_events(events_pred, events_gt, Trange)
+    #             events_pred = convert_vector_to_events(preds)
+    #             affiliation_metrics = pr_from_events(events_pred, events_gt, Trange)
 
-                prec = affiliation_metrics['Affiliation_Precision']
-                rec = affiliation_metrics['Affiliation_Recall']
+    #             prec = affiliation_metrics['Affiliation_Precision']
+    #             rec = affiliation_metrics['Affiliation_Recall']
 
-                if prec + rec > 0:
-                    f1 = 2 * prec * rec / (prec + rec + self.eps)
-                else:
-                    f1 = 0.0
+    #             if prec + rec > 0:
+    #                 f1 = 2 * prec * rec / (prec + rec + self.eps)
+    #             else:
+    #                 f1 = 0.0
 
-                results.append({
-                    'f1': f1,
-                    'precision': prec,
-                    'recall': rec,
-                    'p_value': p_values[idx],
-                    'threshold': thresholds[idx]
-                })
+    #             results.append({
+    #                 'f1': f1,
+    #                 'precision': prec,
+    #                 'recall': rec,
+    #                 'p_value': p_values[idx],
+    #                 'threshold': thresholds[idx]
+    #             })
 
-            return results
+    #         return results
 
-        # Split indices for workers
-        indices = list(range(len(p_values)))
-        chunk_size = len(indices) // num_workers
-        if chunk_size == 0:
-            chunk_size = 1
-        index_chunks = [indices[i:i + chunk_size] for i in range(0, len(indices), chunk_size)]
+    #     # Split indices for workers
+    #     indices = list(range(len(p_values)))
+    #     chunk_size = len(indices) // num_workers
+    #     if chunk_size == 0:
+    #         chunk_size = 1
+    #     index_chunks = [indices[i:i + chunk_size] for i in range(0, len(indices), chunk_size)]
 
-        # Process with thread pool
-        all_results = []
-        with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            futures = [executor.submit(compute_metrics_batch, chunk) for chunk in index_chunks]
+    #     # Process with thread pool
+    #     all_results = []
+    #     with ThreadPoolExecutor(max_workers=num_workers) as executor:
+    #         futures = [executor.submit(compute_metrics_batch, chunk) for chunk in index_chunks]
 
-            completed = 0
-            for future in as_completed(futures):
-                all_results.extend(future.result())
-                completed += 1
-                print(f"Progress: {completed}/{len(futures)} chunks completed", end='\r')
+    #         completed = 0
+    #         for future in as_completed(futures):
+    #             all_results.extend(future.result())
+    #             completed += 1
+    #             print(f"Progress: {completed}/{len(futures)} chunks completed", end='\r')
 
-        print()  # New line
+    #     print()  # New line
 
-        # Find best result
-        best_result = max(all_results, key=lambda x: x['f1'])
+    #     # Find best result
+    #     best_result = max(all_results, key=lambda x: x['f1'])
 
-        elapsed = time.time() - start_time
-        print(f"Affiliation computed in {elapsed:.2f}s")
+    #     elapsed = time.time() - start_time
+    #     print(f"Affiliation computed in {elapsed:.2f}s")
 
-        return best_result['f1'], best_result['precision'], best_result['recall']
+    #     return best_result['f1'], best_result['precision'], best_result['recall']
 
     def metric_Affiliation_chunked(self, label, score, chunk_size=30, num_workers=4):
         """
@@ -1938,7 +1938,7 @@ class basic_metricor():
         start_time = time.time()
 
         # Generate q_values (quantiles)
-        q_values = np.arange(0.7, 0.99, 0.001)
+        q_values = np.arange(0, 1, 0.001)
         total_thresholds = len(q_values)
 
         # Create chunks of q_values

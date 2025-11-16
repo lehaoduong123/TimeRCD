@@ -10,7 +10,7 @@ This script profiles TimeRCD's computational complexity by measuring:
 - **Component breakdown**: Time spent in encoder, reconstruction head, and anomaly head
 - **Training cost**: Synthetic training-step time (forward + backward)
 - **Model capacity**: Total number of learnable parameters
-- **Cross-model baselines**: Optional profiling hooks for DADA, TimeMoE, Chronos, and TimesFM
+- **Cross-model baselines**: Optional profiling hooks for DADA, TimeMoE, Chronos, TimesFM, and MOMENT
 
 ## Usage
 
@@ -48,7 +48,7 @@ python evaluation/complexity_analysis.py \
 - `--num_runs`: Number of runs per configuration for averaging (default: 10)
 - `--device`: Device to use - 'cuda' or 'cpu' (default: 'cuda')
 - `--cuda_devices`: CUDA device string (e.g., `0` or `0,1`) exported to `CUDA_VISIBLE_DEVICES`
-- `--model_name`: Choice of model/baseline to profile. Supported values: `timercd`, `dada`, `timemoe`, `chronos`, `timesfm`
+- `--model_name`: Choice of model/baseline to profile. Supported values: `timercd`, `dada`, `timemoe`, `chronos`, `timesfm`, `moment`
 - `--output_dir`: Directory to save plots and reports (default: 'evaluation/complexity_plots')
 
 ## Output
@@ -90,11 +90,12 @@ Testing sequence length: 2000... ✓ (Infer: 23.45ms, Train: 38.12ms, Memory: 67
 
 ### Baseline Profiling
 
-Pass `--model_name dada`, `--model_name timemoe`, `--model_name chronos`, or `--model_name timesfm` to benchmark additional foundation models. Outputs for each model are written to `<output_dir>/<model_name>/...`. Training-step timings are reported as `N/A` for baselines that only expose inference APIs. These options rely on the corresponding third-party dependencies:
+Pass `--model_name dada`, `--model_name timemoe`, `--model_name chronos`, `--model_name timesfm`, or `--model_name moment` to benchmark additional foundation models. Outputs for each model are written to `<output_dir>/<model_name>/...`. Training-step timings are reported as `N/A` for baselines that only expose inference APIs. These options rely on the corresponding third-party dependencies:
 
 - **DADA** / **TimeMoE**: Hugging Face checkpoints (set `DADA_MODEL_PATH` if needed)
 - **Chronos**: `autogluon.timeseries`
 - **TimesFM**: `timesfm` Python package
+- **MOMENT**: `momentfm` package and `AutonLab/MOMENT-1-base` checkpoint
 
 Ensure these dependencies and models are installed on the target machine before running the profiler; otherwise the script will surface informative errors.
 

@@ -73,7 +73,9 @@ class BaselineRunner:
         default_window = getattr(config.ts_config, 'patch_size', 64) or 64
         base_window = max(64, default_window)
         if self.name == 'dada':
-            self.window_size = 64
+            self.window_size = 100  # DADA requires window size of 100
+        elif self.name == 'moment':
+            self.window_size = max(64, 256)
         else:
             self.window_size = int(min(seq_len, base_window))
     
@@ -117,6 +119,13 @@ class BaselineRunner:
                 prediction_length=1,
                 input_c=self.num_features
             )
+        if self.name == 'moment':
+            from models.MOMENT import MOMENT as MomentModel
+            return MomentModel(
+                win_size=self.window_size,
+                input_c=self.num_features,
+                batch_size=self.batch_size
+            )
         raise ValueError(f"Unsupported baseline model: {self.name}")
     
     def get_model(self):
@@ -157,7 +166,38 @@ class BaselineRunner:
         model = self.get_model()
         np_data = self._prepare_numpy(data)
         if self.name == 'dada':
-            return model.zero_shot(np_data)
+            # For DADA, divide sequence into chunks of 100 (window_size)
+            # Process each chunk separately and concatenate results
+            chunk_size = self.window_size  # 100
+            total_length = np_data.shape[0]
+            
+            if total_length <= chunk_size:
+                # If sequence is small enough, process directly
+                return model.zero_shot(np_data)
+            
+            # Divide into chunks of 100
+            num_chunks = total_length // chunk_size
+            if total_length % chunk_size != 0:
+                num_chunks += 1
+            
+            all_scores = []
+            for i in range(num_chunks):
+                start_idx = i * chunk_size
+                end_idx = min(start_idx + chunk_size, total_length)
+                chunk = np_data[start_idx:end_idx]
+                
+                # Pad chunk to exactly chunk_size if needed
+                if chunk.shape[0] < chunk_size:
+                    pad_len = chunk_size - chunk.shape[0]
+                    pad_values = chunk[-1:, :] if chunk.shape[0] > 0 else np.zeros((1, chunk.shape[1]))
+                    pad = np.repeat(pad_values, pad_len, axis=0)
+                    chunk = np.concatenate([chunk, pad], axis=0)
+                
+                chunk_scores = model.zero_shot(chunk)
+                all_scores.append(chunk_scores)
+            
+            # Concatenate all scores
+            return np.concatenate(all_scores, axis=0) if len(all_scores) > 0 else np.array([])
         if self.name in ('timemoe', 'time_moe', 'time-moe'):
             return model.zero_shot(np_data)
         if self.name == 'chronos':
@@ -167,6 +207,9 @@ class BaselineRunner:
         if self.name == 'timesfm':
             model.score_list = []
             model.fit(np_data)
+            return getattr(model, 'decision_scores_', None)
+        if self.name == 'moment':
+            model.zero_shot(np_data)
             return getattr(model, 'decision_scores_', None)
         raise ValueError(f"Inference not implemented for baseline {self.name}")
     
@@ -414,7 +457,11 @@ class ComplexityProfiler:
                           num_features: int,
                           batch_size: int,
                           num_runs: int) -> ComplexityMetrics:
-        """Profile external baseline models such as DADA, TimeMoE, Chronos, TimesFM."""
+        """Profile external baseline models such as DADA, TimeMoE, Chronos, TimesFM.
+        
+        For DADA model, sequences are divided into chunks of 100 (window_size) and
+        processed separately. The total time includes processing all chunks.
+        """
         runner = BaselineRunner(
             name=self.model_name,
             device=self.device,
@@ -437,6 +484,7 @@ class ComplexityProfiler:
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             start = time.time()
+            # For DADA, this will process chunks of 100 internally
             runner.run_inference(time_series)
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
@@ -804,7 +852,7 @@ def main():
     parser.add_argument('--cuda_devices', type=str, default='1',
                        help='CUDA devices to use')
     parser.add_argument('--model_name', type=str, default='timercd',
-                       choices=['timercd', 'dada', 'timemoe', 'chronos', 'timesfm'],
+                       choices=['timercd', 'dada', 'timemoe', 'chronos', 'timesfm', 'moment'],
                        help='Model/baseline to profile')
     parser.add_argument('--output_dir', type=str, default='evaluation/complexity_plots',
                        help='Output directory for plots and reports')
