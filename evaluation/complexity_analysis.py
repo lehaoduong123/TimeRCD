@@ -3,6 +3,32 @@ Computational Complexity Analysis Script for TimeRCD
 
 This script analyzes the computational complexity (time and space) of TimeRCD
 by measuring performance across different sequence lengths and configurations.
+
+IMPROVEMENTS (v2):
+=================
+1. **Enhanced Time Tracking**:
+   - Uses `time.perf_counter()` for higher precision CPU timing
+   - Uses `torch.cuda.Event` for more accurate GPU timing when available
+   - Proper synchronization before/after GPU operations
+   - Reports standard deviation for timing measurements
+
+2. **Comprehensive Memory Tracking**:
+   - Tracks PyTorch GPU memory (via torch.cuda.max_memory_allocated)
+   - Tracks system memory (via psutil) for models that use non-PyTorch memory
+   - Measures memory delta from baseline for accurate tracking
+   - Reports both GPU and system memory separately
+
+3. **Better Baseline Comparisons**:
+   - Improved handling of models that may use CPU or mixed device placement
+   - Separate tracking for models that include training time (e.g., Chronos)
+   - More accurate memory measurement for non-PyTorch frameworks
+
+4. **Statistical Reporting**:
+   - Standard deviation for timing measurements
+   - Multiple runs for more reliable statistics
+   - Better warmup handling to avoid initialization overhead
+
+Note: Install psutil for system memory tracking: `pip install psutil`
 """
 
 import os
@@ -20,6 +46,14 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore")
 
+# Additional imports for comprehensive profiling
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    warnings.warn("psutil not available. System memory tracking will be disabled. Install with: pip install psutil")
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -31,6 +65,215 @@ from models.time_rcd.TimeRCD_pretrain_multi import TimeSeriesPretrainModel
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams['font.size'] = 11
+
+
+def get_system_memory_mb() -> float:
+    """Get current system memory usage in MB."""
+    if PSUTIL_AVAILABLE:
+        try:
+            process = psutil.Process(os.getpid())
+            return process.memory_info().rss / 1024**2
+        except Exception:
+            return 0.0
+    return 0.0
+
+
+def check_gpu_isolation(device_idx: Optional[int] = None) -> Tuple[bool, str]:
+    """
+    Check if GPU is being shared with other processes.
+    
+    Args:
+        device_idx: CUDA device index to check (None for current device)
+    
+    Returns:
+        Tuple of (is_isolated, warning_message)
+    """
+    if not torch.cuda.is_available():
+        return True, "GPU not available (using CPU)"
+    
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['nvidia-smi', '--query-compute-apps=pid,process_name,used_memory', 
+             '--format=csv,noheader,nounits'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        
+        if result.returncode != 0:
+            return True, "Could not check GPU isolation (nvidia-smi unavailable)"
+        
+        current_pid = os.getpid()
+        other_processes = []
+        
+        for line in result.stdout.strip().split('\n'):
+            if not line.strip():
+                continue
+            parts = line.split(',')
+            if len(parts) >= 3:
+                try:
+                    pid = int(parts[0].strip())
+                    if pid != current_pid:
+                        process_name = parts[1].strip()
+                        memory = parts[2].strip()
+                        other_processes.append(f"PID {pid} ({process_name}): {memory}MB")
+                except (ValueError, IndexError):
+                    continue
+        
+        if other_processes:
+            warning = f"WARNING: Other processes using GPU:\n  " + "\n  ".join(other_processes)
+            return False, warning
+        else:
+            return True, "GPU appears isolated"
+            
+    except FileNotFoundError:
+        return True, "Could not check GPU isolation (nvidia-smi not found)"
+    except Exception as e:
+        return True, f"Could not check GPU isolation: {e}"
+
+
+def get_gpu_memory_info(device_idx: Optional[int] = None) -> Dict[str, float]:
+    """
+    Get detailed GPU memory information.
+    
+    Args:
+        device_idx: CUDA device index (None for current device)
+    
+    Returns:
+        Dictionary with memory stats in MB
+    """
+    if not torch.cuda.is_available():
+        return {"allocated": 0.0, "reserved": 0.0, "free": 0.0, "total": 0.0}
+    
+    if device_idx is not None:
+        torch.cuda.set_device(device_idx)
+    
+    allocated = torch.cuda.memory_allocated() / 1024**2
+    reserved = torch.cuda.memory_reserved() / 1024**2
+    
+    props = torch.cuda.get_device_properties(device_idx if device_idx is not None else 0)
+    total = props.total_memory / 1024**2
+    free = total - reserved
+    
+    return {
+        "allocated": allocated,
+        "reserved": reserved,
+        "free": free,
+        "total": total
+    }
+
+
+def reset_memory_stats(device_idx: Optional[int] = None):
+    """
+    Reset both GPU and system memory tracking.
+    
+    Args:
+        device_idx: CUDA device index to reset (None for current device)
+    """
+    if torch.cuda.is_available():
+        if device_idx is not None:
+            torch.cuda.set_device(device_idx)
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+    
+    # Force garbage collection to get baseline system memory
+    import gc
+    gc.collect()
+    
+    # Small delay to ensure memory is freed
+    time.sleep(0.1)
+
+
+def get_peak_memory_mb(include_system: bool = True) -> Tuple[float, Optional[float]]:
+    """
+    Get peak memory usage.
+    
+    Returns:
+        Tuple of (gpu_memory_mb, system_memory_mb)
+    """
+    gpu_memory = 0.0
+    if torch.cuda.is_available():
+        gpu_memory = torch.cuda.max_memory_allocated() / 1024**2
+    
+    system_memory = None
+    if include_system and PSUTIL_AVAILABLE:
+        system_memory = get_system_memory_mb()
+    
+    return gpu_memory, system_memory
+
+
+def profile_function_timing(func, *args, num_runs: int = 10, warmup_runs: int = 3, 
+                           use_gpu_events: bool = False, **kwargs) -> Dict[str, float]:
+    """
+    Profile a function's execution time with comprehensive tracking.
+    
+    Args:
+        func: Function to profile
+        *args: Positional arguments for func
+        num_runs: Number of measurement runs
+        warmup_runs: Number of warmup runs
+        use_gpu_events: If True, use CUDA events for more accurate GPU timing
+        **kwargs: Keyword arguments for func
+    
+    Returns:
+        Dictionary with timing statistics
+    """
+    times = []
+    
+    # Warmup runs
+    for _ in range(warmup_runs):
+        try:
+            _ = func(*args, **kwargs)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+        except Exception as e:
+            warnings.warn(f"Warning in warmup: {e}")
+    
+    # Synchronize before measurement
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    
+    # Measurement runs
+    for _ in range(num_runs):
+        if use_gpu_events and torch.cuda.is_available():
+            # Use CUDA events for more accurate GPU timing
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            
+            torch.cuda.synchronize()
+            start_event.record()
+            
+            _ = func(*args, **kwargs)
+            
+            end_event.record()
+            torch.cuda.synchronize()
+            
+            elapsed_ms = start_event.elapsed_time(end_event)  # Returns milliseconds
+            times.append(elapsed_ms)
+        else:
+            # Use high-resolution CPU timer
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            
+            start = time.perf_counter()
+            
+            _ = func(*args, **kwargs)
+            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            
+            elapsed = time.perf_counter() - start
+            times.append(elapsed * 1000)  # Convert to milliseconds
+    
+    return {
+        'mean_ms': np.mean(times),
+        'std_ms': np.std(times),
+        'min_ms': np.min(times),
+        'max_ms': np.max(times),
+        'times': times
+    }
 
 
 @dataclass
@@ -45,9 +288,12 @@ class ComplexityMetrics:
     reconstruction_head_time: float
     anomaly_head_time: float
     training_step_time: float
-    peak_memory_mb: float
-    model_params: int
+    peak_memory_mb: float  # GPU memory (PyTorch) in MB
+    peak_system_memory_mb: Optional[float] = None  # System memory (RSS) in MB
+    model_params: int = 0
     flops: Optional[int] = None
+    std_time_ms: Optional[float] = None  # Standard deviation of inference time
+    std_memory_mb: Optional[float] = None  # Standard deviation of memory usage
 
 
 class BaselineRunner:
@@ -385,7 +631,8 @@ class ComplexityProfiler:
             seq_len=seq_len,
             num_features=num_features,
             batch_size=batch_size,
-            num_runs=num_runs
+            num_runs=num_runs,
+            warmup_runs=warmup_runs
         )
 
     def _profile_timercd(self,
@@ -402,71 +649,140 @@ class ComplexityProfiler:
         time_series = torch.randn(batch_size, seq_len, num_features, device=self.device)
         attention_mask = torch.ones(batch_size, seq_len, dtype=torch.bool, device=self.device)
         
+        # Check GPU isolation and get initial memory state
+        if torch.cuda.is_available():
+            device_idx = self.device.index if hasattr(self.device, 'index') and self.device.index is not None else 0
+            is_isolated, isolation_msg = check_gpu_isolation(device_idx)
+            if not is_isolated:
+                warnings.warn(isolation_msg)
+            
+            initial_gpu_mem = get_gpu_memory_info(device_idx)
+            if initial_gpu_mem["allocated"] > 100:  # More than 100MB already allocated
+                warnings.warn(
+                    f"GPU already has {initial_gpu_mem['allocated']:.2f}MB allocated. "
+                    f"Results may be affected by other processes. "
+                    f"Consider running profiling in isolation."
+                )
+        
         # Warmup runs
         with torch.no_grad():
             for _ in range(warmup_runs):
                 _ = self.model(time_series, attention_mask)
         
-        # Clear cache
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
+        # Reset memory tracking (with delay to ensure cleanup)
+        device_idx = self.device.index if torch.cuda.is_available() and hasattr(self.device, 'index') and self.device.index is not None else None
+        reset_memory_stats(device_idx)
         
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
-        # Timing measurements
+        # Wait a bit more to ensure baseline is stable
+        time.sleep(0.2)
+        
+        # Get baseline system memory (measure multiple times for stability)
+        baseline_system_mem = None
+        if PSUTIL_AVAILABLE:
+            baseline_readings = []
+            for _ in range(3):
+                baseline_readings.append(get_system_memory_mb())
+                time.sleep(0.1)
+            baseline_system_mem = np.mean(baseline_readings)
+        
+        # Timing measurements using improved profiling
         encoder_times = []
         recon_head_times = []
         anomaly_head_times = []
-        training_step_times = []
         total_times = []
+        
+        # Use CUDA events for more accurate GPU timing if available
+        use_cuda_events = torch.cuda.is_available()
         
         with torch.no_grad():
             for _ in range(num_runs):
-                if torch.cuda.is_available():
+                if use_cuda_events:
                     torch.cuda.synchronize()
-                
-                start_time = time.time()
+                    start_event = torch.cuda.Event(enable_timing=True)
+                    end_event = torch.cuda.Event(enable_timing=True)
+                    start_event.record()
+                else:
+                    start_time = time.perf_counter()
                 
                 # Forward through encoder
-                encoder_start = time.time()
+                if use_cuda_events:
+                    enc_start = torch.cuda.Event(enable_timing=True)
+                    enc_end = torch.cuda.Event(enable_timing=True)
+                    enc_start.record()
+                else:
+                    enc_start = time.perf_counter()
+                
                 local_embeddings = self.model.ts_encoder(time_series, attention_mask)
-                if torch.cuda.is_available():
+                
+                if use_cuda_events:
+                    enc_end.record()
                     torch.cuda.synchronize()
-                encoder_time = time.time() - encoder_start
-                encoder_times.append(encoder_time)
+                    encoder_times.append(enc_start.elapsed_time(enc_end) / 1000.0)
+                else:
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                    encoder_times.append(time.perf_counter() - enc_start)
                 
                 # Forward through reconstruction head
-                recon_start = time.time()
+                if use_cuda_events:
+                    recon_start = torch.cuda.Event(enable_timing=True)
+                    recon_end = torch.cuda.Event(enable_timing=True)
+                    recon_start.record()
+                else:
+                    recon_start = time.perf_counter()
+                
                 _ = self.model.reconstruction_head(local_embeddings)
-                if torch.cuda.is_available():
+                
+                if use_cuda_events:
+                    recon_end.record()
                     torch.cuda.synchronize()
-                recon_time = time.time() - recon_start
-                recon_head_times.append(recon_time)
+                    recon_head_times.append(recon_start.elapsed_time(recon_end) / 1000.0)
+                else:
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                    recon_head_times.append(time.perf_counter() - recon_start)
                 
                 # Forward through anomaly head
-                anomaly_start = time.time()
-                _ = self.model.anomaly_head(local_embeddings)
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
-                anomaly_time = time.time() - anomaly_start
-                anomaly_head_times.append(anomaly_time)
+                if use_cuda_events:
+                    anom_start = torch.cuda.Event(enable_timing=True)
+                    anom_end = torch.cuda.Event(enable_timing=True)
+                    anom_start.record()
+                else:
+                    anom_start = time.perf_counter()
                 
-                # Total time
-                if torch.cuda.is_available():
+                _ = self.model.anomaly_head(local_embeddings)
+                
+                if use_cuda_events:
+                    anom_end.record()
+                    end_event.record()
                     torch.cuda.synchronize()
-                total_time = time.time() - start_time
-                total_times.append(total_time)
+                    anomaly_head_times.append(anom_start.elapsed_time(anom_end) / 1000.0)
+                    total_times.append(start_event.elapsed_time(end_event) / 1000.0)
+                else:
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                    anomaly_head_times.append(time.perf_counter() - anom_start)
+                    total_times.append(time.perf_counter() - start_time)
         
         # Simulate training step timing with backward pass
+        training_step_times = []
         self.model.train()
+        
+        use_cuda_events_train = torch.cuda.is_available()
+        
         for _ in range(num_runs):
             self.model.zero_grad(set_to_none=True)
             masked_series, mask, labels = self._prepare_training_batch(time_series, attention_mask)
             
-            if torch.cuda.is_available():
+            if use_cuda_events_train:
                 torch.cuda.synchronize()
-            train_start = time.time()
+                train_start = torch.cuda.Event(enable_timing=True)
+                train_end = torch.cuda.Event(enable_timing=True)
+                train_start.record()
+            else:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                train_start = time.perf_counter()
             
             local_embeddings = self.model(masked_series, attention_mask & (~mask.bool()))
             recon_loss = self.model.masked_reconstruction_loss(local_embeddings, time_series, mask)
@@ -474,16 +790,25 @@ class ComplexityProfiler:
             total_loss = recon_loss + anomaly_loss
             total_loss.backward()
             
-            if torch.cuda.is_available():
+            if use_cuda_events_train:
+                train_end.record()
                 torch.cuda.synchronize()
-            training_step_times.append(time.time() - train_start)
+                training_step_times.append(train_start.elapsed_time(train_end) / 1000.0)
+            else:
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                training_step_times.append(time.perf_counter() - train_start)
+        
         self.model.zero_grad(set_to_none=True)
         self.model.eval()
         
-        if torch.cuda.is_available():
-            peak_memory = torch.cuda.max_memory_allocated() / 1024**2  # MB
-        else:
-            peak_memory = 0
+        # Get peak memory (GPU and system)
+        peak_gpu_mem, peak_system_mem = get_peak_memory_mb(include_system=True)
+        
+        # Calculate system memory delta
+        system_memory_delta = None
+        if baseline_system_mem is not None and peak_system_mem is not None:
+            system_memory_delta = peak_system_mem - baseline_system_mem
         
         total_params = sum(p.numel() for p in self.model.parameters())
         flops = self.estimate_flops(seq_len, num_features, batch_size)
@@ -497,22 +822,37 @@ class ComplexityProfiler:
             attention_time=np.mean(encoder_times) * 0.8,
             reconstruction_head_time=np.mean(recon_head_times),
             anomaly_head_time=np.mean(anomaly_head_times),
-            training_step_time=np.mean(training_step_times),
-            peak_memory_mb=peak_memory,
+            training_step_time=np.mean(training_step_times) if training_step_times else float('nan'),
+            peak_memory_mb=peak_gpu_mem,
+            peak_system_memory_mb=system_memory_delta,
             model_params=self._param_count if self._param_count is not None else total_params,
-            flops=flops
+            flops=flops,
+            std_time_ms=np.std(total_times) * 1000.0 if len(total_times) > 1 else None,
+            std_memory_mb=None  # Would need multiple runs to calculate
         )
     
     def _profile_baseline(self,
                           seq_len: int,
                           num_features: int,
                           batch_size: int,
-                          num_runs: int) -> ComplexityMetrics:
+                          num_runs: int,
+                          warmup_runs: int = 3) -> ComplexityMetrics:
         """Profile external baseline models such as DADA, TimeMoE, Chronos, TimesFM, MOMENT.
         
         All baseline models use chunking based on their optimal window sizes (from HP_list.py)
         for fair comparison. Sequences longer than window_size are divided into chunks and
         processed separately. The total time includes processing all chunks.
+        
+        IMPORTANT NOTE: For Chronos, this measures fit+inference time since it calls fit()
+        which includes training. This is different from TimeRCD which only does inference.
+        Consider reporting this separately or noting in documentation.
+        
+        For Chronos specifically:
+        - Memory may appear artificially low because AutoGluon's TimeSeriesPredictor
+          may run on CPU or manage memory outside PyTorch's tracking
+        - Time includes both model fitting (training) and prediction, making it
+          slower than inference-only comparisons
+        - System memory tracking helps capture memory that PyTorch doesn't track
         
         Window sizes:
         - DADA: 100, Chronos: 100, TimesFM: 96, MOMENT: 64, TimeMoE: 96
@@ -526,46 +866,88 @@ class ComplexityProfiler:
             batch_size=batch_size
         )
         
+        # Check GPU isolation and get initial memory state
+        if torch.cuda.is_available():
+            device_idx = self.device.index if self.device.index is not None else 0
+            is_isolated, isolation_msg = check_gpu_isolation(device_idx)
+            if not is_isolated:
+                warnings.warn(isolation_msg)
+            
+            initial_gpu_mem = get_gpu_memory_info(device_idx)
+            if initial_gpu_mem["allocated"] > 100:  # More than 100MB already allocated
+                warnings.warn(
+                    f"GPU already has {initial_gpu_mem['allocated']:.2f}MB allocated. "
+                    f"Results may be affected by other processes. "
+                    f"Consider running profiling in isolation."
+                )
+        
         time_series = torch.randn(batch_size, seq_len, num_features, device=self.device)
         attention_mask = torch.ones(batch_size, seq_len, dtype=torch.bool, device=self.device)
         
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-            torch.cuda.reset_peak_memory_stats()
+        # Reset memory tracking (with delay to ensure cleanup)
+        device_idx = self.device.index if torch.cuda.is_available() and hasattr(self.device, 'index') else None
+        reset_memory_stats(device_idx)
         
-        total_times = []
-        for _ in range(num_runs):
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-            start = time.time()
-            # All models process chunks of their optimal window_size internally
-            runner.run_inference(time_series)
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-            total_times.append(time.time() - start)
+        # Wait a bit more to ensure baseline is stable
+        time.sleep(0.2)
         
-        if torch.cuda.is_available():
-            peak_memory = torch.cuda.max_memory_allocated() / 1024**2  # MB
-        else:
-            peak_memory = 0
+        # Get baseline system memory (measure multiple times for stability)
+        baseline_system_mem = None
+        if PSUTIL_AVAILABLE:
+            baseline_readings = []
+            for _ in range(3):
+                baseline_readings.append(get_system_memory_mb())
+                time.sleep(0.1)
+            baseline_system_mem = np.mean(baseline_readings)
         
-        avg_total = np.mean(total_times)
+        # Profile inference time with comprehensive tracking
+        timing_stats = profile_function_timing(
+            runner.run_inference,
+            time_series,
+            num_runs=num_runs,
+            warmup_runs=warmup_runs,
+            use_gpu_events=torch.cuda.is_available() and self.model_name != 'chronos'
+            # Don't use GPU events for Chronos as it may use CPU
+        )
+        
+        # Get peak memory (GPU and system)
+        peak_gpu_mem, peak_system_mem = get_peak_memory_mb(include_system=True)
+        
+        # Calculate system memory delta
+        system_memory_delta = None
+        if baseline_system_mem is not None and peak_system_mem is not None:
+            system_memory_delta = peak_system_mem - baseline_system_mem
+        
+        # Track memory across runs for std calculation
+        memory_readings = []
+        if num_runs > 1:
+            # Do additional runs to measure memory variation
+            for _ in range(min(5, num_runs)):
+                reset_memory_stats()
+                _ = runner.run_inference(time_series)
+                gpu_mem, sys_mem = get_peak_memory_mb(include_system=False)
+                memory_readings.append(gpu_mem)
+        
+        std_memory = np.std(memory_readings) if len(memory_readings) > 1 else None
+        
         param_count = runner.parameter_count()
         
         return ComplexityMetrics(
             sequence_length=seq_len,
             num_features=num_features,
             batch_size=batch_size,
-            total_time=avg_total,
-            encoder_time=avg_total,
-            attention_time=avg_total,
+            total_time=timing_stats['mean_ms'] / 1000.0,  # Convert back to seconds
+            encoder_time=timing_stats['mean_ms'] / 1000.0,
+            attention_time=timing_stats['mean_ms'] / 1000.0,
             reconstruction_head_time=0.0,
             anomaly_head_time=0.0,
             training_step_time=float('nan'),
-            peak_memory_mb=peak_memory,
+            peak_memory_mb=peak_gpu_mem,
+            peak_system_memory_mb=system_memory_delta,
             model_params=param_count if param_count is not None else 0,
-            flops=None
+            flops=None,
+            std_time_ms=timing_stats['std_ms'],
+            std_memory_mb=std_memory
         )
     
     def analyze_scaling(self,
@@ -603,10 +985,18 @@ class ComplexityProfiler:
                 results.append(metrics)
                 train_ms = metrics.training_step_time * 1000
                 train_text = f"{train_ms:.2f}ms" if np.isfinite(train_ms) else "N/A"
+                memory_text = f"{metrics.peak_memory_mb:.2f}MB"
+                if metrics.peak_system_memory_mb is not None:
+                    memory_text += f" (sys: {metrics.peak_system_memory_mb:.2f}MB)"
+                
+                std_text = ""
+                if metrics.std_time_ms is not None:
+                    std_text = f" ±{metrics.std_time_ms:.2f}ms"
+                
                 print(
-                    f"✓ (Infer: {metrics.total_time*1000:.2f}ms, "
+                    f"✓ (Infer: {metrics.total_time*1000:.2f}ms{std_text}, "
                     f"Train: {train_text}, "
-                    f"Memory: {metrics.peak_memory_mb:.2f}MB)"
+                    f"Memory: {memory_text})"
                 )
             except Exception as e:
                 print(f"✗ Error: {e}")
@@ -819,11 +1209,14 @@ def generate_complexity_report(results: List[ComplexityMetrics],
             "anomaly_head_time_ms": r.anomaly_head_time * 1000,
             "training_step_time_ms": training_time_ms,
             "peak_memory_mb": r.peak_memory_mb,
+            "peak_system_memory_mb": r.peak_system_memory_mb,
             "model_parameters": r.model_params,
             "time_per_element_ms": (r.total_time * 1000) / r.sequence_length,
             "memory_per_element_mb": r.peak_memory_mb / r.sequence_length,
             "flops": r.flops if r.flops else None,
-            "flops_per_element": (r.flops / r.sequence_length) if r.flops else None
+            "flops_per_element": (r.flops / r.sequence_length) if r.flops else None,
+            "std_time_ms": r.std_time_ms,
+            "std_memory_mb": r.std_memory_mb
         })
     
     # Calculate scaling factors

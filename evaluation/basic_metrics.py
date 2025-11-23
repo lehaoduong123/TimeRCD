@@ -1421,7 +1421,7 @@ class basic_metricor():
         Trange = (0, len(label))
 
         # Generate p-values and thresholds
-        p_values = np.linspace(0.8, 1, 300)
+        p_values = np.linspace(0, 1, 1000)
 
         # Pre-compute all thresholds
         thresholds = np.quantile(score, p_values)
