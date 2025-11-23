@@ -184,8 +184,8 @@ if __name__ == '__main__':
             output_aligned = output[:min_length]
             label_aligned = label_test[:min_length]
             logits_aligned = None
-            if logits is not None:
-                logits_aligned = logits[:min_length]
+            # if logits is not None:
+            #     logits_aligned = logits[:min_length]
 
 
             evaluation_result = get_metrics(output_aligned, label_aligned, slidingWindow=slidingWindow, pred=output_aligned > (np.mean(output_aligned)+3*np.std(output_aligned)))
