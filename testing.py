@@ -125,7 +125,7 @@ if __name__ == '__main__':
         files = os.listdir(base_dir)
 
 
-
+    file_count = 0
     # ## ArgumentParser
     for file in files:
 
@@ -159,8 +159,6 @@ if __name__ == '__main__':
         data_train = data[:int(train_index), :]
         test_data  = data[int(train_index):, :]
         label_test = label[int(train_index):]
-
-
 
         logits = None  # ensure defined irrespective of branch
 
@@ -248,6 +246,24 @@ if __name__ == '__main__':
                 'error_message': output
             }
             all_results.append(result_dict)
+        file_count += 1
+        if file_count > 10:
+                # Convert results to DataFrame and save to CSV
+            if all_results:
+                results_df = pd.DataFrame(all_results)
+                # win_size =  str(Optimal_Det_HP['win_size']) if Optimal_Det_HP['win_size'] else ""
+                output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}_{file_count}.csv'
+                results_df.to_csv(output_filename, index=False)
+                print(f"\nAll results saved to {output_filename}")
+                print(f"Total file processed: {len(all_results)}")
+                print(f"Results shape: {results_df.shape}")
+                if all_logits:
+                    logits_df = pd.DataFrame(all_logits)
+                    logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}_{file_count}.csv'
+                    logits_df.to_csv(logits_output_filename, index=False)
+                    print(f"Logits results saved to {logits_output_filename}")
+            else:
+                print("No results to save.")
 
     # Convert results to DataFrame and save to CSV
     if all_results:
