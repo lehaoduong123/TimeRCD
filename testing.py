@@ -190,8 +190,8 @@ if __name__ == '__main__':
 
             evaluation_result = get_metrics(output_aligned, label_aligned, slidingWindow=slidingWindow, pred=output_aligned > (np.mean(output_aligned)+3*np.std(output_aligned)))
             evaluation_result_logits = None
-            if logits is not None:
-                evaluation_result_logits = get_metrics(logits_aligned, label_aligned, slidingWindow=slidingWindow, pred=logits_aligned > (np.mean(logits_aligned)+3*np.std(logits_aligned)))
+            # if logits is not None:
+            #     evaluation_result_logits = get_metrics(logits_aligned, label_aligned, slidingWindow=slidingWindow, pred=logits_aligned > (np.mean(logits_aligned)+3*np.std(logits_aligned)))
             
             print(evaluation_result)
 
