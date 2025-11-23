@@ -977,11 +977,11 @@ class ComplexityProfiler:
         print("\n" + "=" * 60)
         print("Global warmup to eliminate first-run overhead...")
         print("=" * 60)
-        max_seq = max(seq_lengths)
+        max_seq = min(seq_lengths)
         print(f"Warming up with largest sequence length ({max_seq}) to compile CUDA kernels...")
-        
-        for i in range(5):
-            print(f"  Warmup run {i+1}/5...", end=" ", flush=True)
+        warm_up_runs = 1 
+        for i in range(warm_up_runs):
+            print(f"  Warmup run {i+1}/{warm_up_runs}...", end=" ", flush=True)
             try:
                 _ = self.profile_forward_pass(
                     seq_len=max_seq,
