@@ -57,7 +57,7 @@ class BinaryAttentionBias(nn.Module):
 
 class MultiheadAttentionWithRoPE(nn.Module):
     """Multi-head Attention with Rotary Positional Encoding (RoPE), non-causal by default."""
-    "========== NOtice that this applies BinaryAttentionBias ==========="
+    "========== Notice that this applies BinaryAttentionBias ==========="
 
     def __init__(self, embed_dim, num_heads, num_features):
         super().__init__()

@@ -1,0 +1,69 @@
+{
+  "model_config": {
+    "d_model": 512,
+    "d_proj": 256,
+    "num_layers": 8,
+    "num_heads": 8,
+    "patch_size": 4,
+    "num_features": 1
+  },
+  "results": [
+    {
+      "sequence_length": 1000,
+      "num_features": 1,
+      "batch_size": 1,
+      "total_time_ms": 789.3195390701294,
+      "encoder_time_ms": 789.3195390701294,
+      "reconstruction_head_time_ms": 0.0,
+      "anomaly_head_time_ms": 0.0,
+      "training_step_time_ms": null,
+      "peak_memory_mb": 17.7685546875,
+      "model_parameters": 1844714,
+      "time_per_element_ms": 0.7893195390701294,
+      "memory_per_element_mb": 0.0177685546875,
+      "flops": null,
+      "flops_per_element": null
+    },
+    {
+      "sequence_length": 2000,
+      "num_features": 1,
+      "batch_size": 1,
+      "total_time_ms": 275.08184909820557,
+      "encoder_time_ms": 275.08184909820557,
+      "reconstruction_head_time_ms": 0.0,
+      "anomaly_head_time_ms": 0.0,
+      "training_step_time_ms": null,
+      "peak_memory_mb": 17.7734375,
+      "model_parameters": 1844714,
+      "time_per_element_ms": 0.13754092454910277,
+      "memory_per_element_mb": 0.00888671875,
+      "flops": null,
+      "flops_per_element": null
+    },
+    {
+      "sequence_length": 5000,
+      "num_features": 1,
+      "batch_size": 1,
+      "total_time_ms": 773.5934019088745,
+      "encoder_time_ms": 773.5934019088745,
+      "reconstruction_head_time_ms": 0.0,
+      "anomaly_head_time_ms": 0.0,
+      "training_step_time_ms": null,
+      "peak_memory_mb": 17.7880859375,
+      "model_parameters": 1844714,
+      "time_per_element_ms": 0.15471868038177491,
+      "memory_per_element_mb": 0.0035576171875,
+      "flops": null,
+      "flops_per_element": null
+    }
+  ],
+  "scaling_analysis": {
+    "sequence_length_ratio": 5.0,
+    "time_ratio": 0.9800763361568607,
+    "memory_ratio": 1.0010992030777686,
+    "time_scaling_factor": 0.19601526723137214,
+    "memory_scaling_factor": 0.2002198406155537,
+    "estimated_time_complexity": "O(n^-0.01)",
+    "estimated_space_complexity": "O(n^0.00)"
+  }
+}

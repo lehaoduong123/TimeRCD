@@ -140,3 +140,5 @@ responese.md
 responese.pdf
 autorank_analysis/
 autorank_analysis.py
+latex.py
+main_table.tex

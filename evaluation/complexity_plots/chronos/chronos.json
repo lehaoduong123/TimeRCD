@@ -1,0 +1,69 @@
+{
+  "model_config": {
+    "d_model": 512,
+    "d_proj": 256,
+    "num_layers": 8,
+    "num_heads": 8,
+    "patch_size": 4,
+    "num_features": 1
+  },
+  "results": [
+    {
+      "sequence_length": 1000,
+      "num_features": 1,
+      "batch_size": 1,
+      "total_time_ms": 263.10627460479736,
+      "encoder_time_ms": 263.10627460479736,
+      "reconstruction_head_time_ms": 0.0,
+      "anomaly_head_time_ms": 0.0,
+      "training_step_time_ms": null,
+      "peak_memory_mb": 0.0048828125,
+      "model_parameters": 0,
+      "time_per_element_ms": 0.26310627460479735,
+      "memory_per_element_mb": 4.8828125e-06,
+      "flops": null,
+      "flops_per_element": null
+    },
+    {
+      "sequence_length": 2000,
+      "num_features": 1,
+      "batch_size": 1,
+      "total_time_ms": 354.03974056243896,
+      "encoder_time_ms": 354.03974056243896,
+      "reconstruction_head_time_ms": 0.0,
+      "anomaly_head_time_ms": 0.0,
+      "training_step_time_ms": null,
+      "peak_memory_mb": 0.009765625,
+      "model_parameters": 0,
+      "time_per_element_ms": 0.1770198702812195,
+      "memory_per_element_mb": 4.8828125e-06,
+      "flops": null,
+      "flops_per_element": null
+    },
+    {
+      "sequence_length": 5000,
+      "num_features": 1,
+      "batch_size": 1,
+      "total_time_ms": 1041.5518999099731,
+      "encoder_time_ms": 1041.5518999099731,
+      "reconstruction_head_time_ms": 0.0,
+      "anomaly_head_time_ms": 0.0,
+      "training_step_time_ms": null,
+      "peak_memory_mb": 0.0244140625,
+      "model_parameters": 0,
+      "time_per_element_ms": 0.20831037998199464,
+      "memory_per_element_mb": 4.8828125e-06,
+      "flops": null,
+      "flops_per_element": null
+    }
+  ],
+  "scaling_analysis": {
+    "sequence_length_ratio": 5.0,
+    "time_ratio": 3.958673739250238,
+    "memory_ratio": 5.0,
+    "time_scaling_factor": 0.7917347478500476,
+    "memory_scaling_factor": 1.0,
+    "estimated_time_complexity": "O(n^0.85)",
+    "estimated_space_complexity": "O(n^1.00)"
+  }
+}

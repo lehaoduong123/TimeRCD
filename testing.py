@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 import random, argparse
 import numpy as np
+import pickle
 from sklearn.preprocessing import MinMaxScaler
 from evaluation.metrics import get_metrics
 from utils.slidingWindows import find_length_rank
@@ -22,13 +23,27 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 def set_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
+    """Set random seed for reproducibility across all random number generators."""
+    # Python's built-in random
     random.seed(seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    # NumPy
+    np.random.seed(seed)
+    # PyTorch CPU
+    torch.manual_seed(seed)
+    # PyTorch GPU
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        # Ensure deterministic CUDA operations
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        # Set deterministic algorithms (if available)
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+        except:
+            pass
+    # Python hash seed for dictionary ordering (affects some operations)
+    os.environ['PYTHONHASHSEED'] = str(seed)
 
 def get_result(filename):
     pickle_filename = filename.replace('.csv', '_results.pkl')
@@ -47,8 +62,13 @@ if __name__ == '__main__':
     parser.add_argument('--data_direc', type=str, default='')
     parser.add_argument('--save', type=bool, default=True)
     parser.add_argument('--seed', type=int, default=1)
-    set_seed(parser.parse_args().seed)
-    Multi = parser.parse_args().mode == 'multi'
+    # Parse arguments ONCE at the beginning
+    args = parser.parse_args()
+    # Set seed using the parsed arguments - MUST be done before any model operations
+    set_seed(args.seed)
+    print(f"Random seed set to: {args.seed}")
+    print(f"Note: For deterministic models (like Time_RCD in eval mode), results will be identical regardless of seed during inference.")
+    Multi = args.mode == 'multi'
     # Initialize list to store all results
     all_results = []
     all_logits = []
@@ -118,8 +138,7 @@ if __name__ == '__main__':
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
 
-        args = parser.parse_args()
-        # Set the file-specific values
+        # Set the file-specific values (args was already parsed above)
         args.filename = file
         args.data_direc = base_dir
         

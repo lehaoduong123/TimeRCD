@@ -29,9 +29,11 @@ class TimeRCDPretrainTester:
         # Load model
         self.model = TimeSeriesPretrainModel(config).to(self.device)
         self.load_checkpoint(checkpoint_path)
-        self.model.eval()
-
+        # self.model.eval() # Default was eval() which causes deterministic results
+        self.model.train() # Enable train() mode if you want stochastic results (Dropout active)
+        
         print(f"Model loaded on device: {self.device}")
+        print(f"Model training mode: {self.model.training}")
 
     def load_checkpoint(self, checkpoint_path: str):
         """Load model from checkpoint."""
@@ -379,6 +381,10 @@ class TimeRCDPretrainTester:
         loop = tqdm.tqdm(enumerate(test_loader), total=len(test_loader), leave=True)
         scores = []
         logits = []
+        
+        # Ensure model is in the desired mode (train for stochasticity, eval for determinism)
+        # self.model.train() 
+        
         with torch.no_grad():
             for i, batch in loop:
                 # Move data to device
