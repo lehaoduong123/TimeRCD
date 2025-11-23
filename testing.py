@@ -170,7 +170,7 @@ if __name__ == '__main__':
         elif args.AD_Name in Unsupervise_AD_Pool:
             if args.AD_Name == 'Time_RCD':
                 # For Time_RCD, we need to pass the test data directly
-                output, logits = run_Unsupervise_AD(args.AD_Name, data_train, test_data, Multi=Multi, **Optimal_Det_HP)
+                output, _ = run_Unsupervise_AD(args.AD_Name, data_train, test_data, Multi=Multi, **Optimal_Det_HP)
             else:
                 output = run_Unsupervise_AD(args.AD_Name, data_train, test_data, **Optimal_Det_HP)
         else:
@@ -184,14 +184,14 @@ if __name__ == '__main__':
             output_aligned = output[:min_length]
             label_aligned = label_test[:min_length]
             logits_aligned = None
-            # if logits is not None:
-            #     logits_aligned = logits[:min_length]
+            if logits is not None:
+                logits_aligned = logits[:min_length]
 
 
             evaluation_result = get_metrics(output_aligned, label_aligned, slidingWindow=slidingWindow, pred=output_aligned > (np.mean(output_aligned)+3*np.std(output_aligned)))
             evaluation_result_logits = None
-            # if logits is not None:
-            #     evaluation_result_logits = get_metrics(logits_aligned, label_aligned, slidingWindow=slidingWindow, pred=logits_aligned > (np.mean(logits_aligned)+3*np.std(logits_aligned)))
+            if logits is not None:
+                evaluation_result_logits = get_metrics(logits_aligned, label_aligned, slidingWindow=slidingWindow, pred=logits_aligned > (np.mean(logits_aligned)+3*np.std(logits_aligned)))
             
             print(evaluation_result)
 
@@ -209,19 +209,19 @@ if __name__ == '__main__':
             }
             all_results.append(result_dict)
 
-            # if logits is not None:
-            #     logit_dict = {
-            #         'filename': args.filename,
-            #         'AD_Name': args.AD_Name,
-            #         'sliding_window': slidingWindow,
-            #         'train_index': train_index,
-            #         'data_shape': f"{data.shape[0]}x{data.shape[1]}",
-            #         'output_length': len(logits),
-            #         'label_length': len(label_test),  # Use label_test length
-            #         'aligned_length': min_length,
-            #         **evaluation_result_logits  # Unpack all evaluation metrics for logits
-            #     }
-            #     all_logits.append(logit_dict)
+            if logits is not None:
+                logit_dict = {
+                    'filename': args.filename,
+                    'AD_Name': args.AD_Name,
+                    'sliding_window': slidingWindow,
+                    'train_index': train_index,
+                    'data_shape': f"{data.shape[0]}x{data.shape[1]}",
+                    'output_length': len(logits),
+                    'label_length': len(label_test),  # Use label_test length
+                    'aligned_length': min_length,
+                    **evaluation_result_logits  # Unpack all evaluation metrics for logits
+                }
+                all_logits.append(logit_dict)
             # Save value, label, and anomaly scores to pickle file
             if args.save:
                 output_filename = f'{args.filename.split(".")[0]}_results.pkl'
@@ -258,10 +258,10 @@ if __name__ == '__main__':
         print(f"\nAll results saved to {output_filename}")
         print(f"Total file processed: {len(all_results)}")
         print(f"Results shape: {results_df.shape}")
-        # if all_logits:
-        #     logits_df = pd.DataFrame(all_logits)
-        #     logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}.csv'
-        #     logits_df.to_csv(logits_output_filename, index=False)
-        #     print(f"Logits results saved to {logits_output_filename}")
+        if all_logits:
+            logits_df = pd.DataFrame(all_logits)
+            logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}.csv'
+            logits_df.to_csv(logits_output_filename, index=False)
+            print(f"Logits results saved to {logits_output_filename}")
     else:
         print("No results to save.")
