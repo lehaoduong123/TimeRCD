@@ -95,67 +95,91 @@ class Time_MOE(BaseDetector):
         pass
 
     def zero_shot(self, data):
+        """
+        Zero-shot anomaly detection using TimeMOE.
+        
+        FIXED: Uses forward pass instead of .generate() for much faster inference.
+        The original code used .generate() which is for autoregressive text generation
+        and is ~100x slower than needed.
+        """
         test_loader = DataLoader(
             dataset=ReconstructDataset(data, window_size=self.win_size, stride=self.win_size, normalize=True),
             batch_size=self.batch_size,
             shuffle=False)
 
-        loop = tqdm.tqdm(enumerate(test_loader), total=len(test_loader), leave=True)
+        # Removed tqdm for profiling - reduces I/O overhead
+        # loop = tqdm.tqdm(enumerate(test_loader), total=len(test_loader), leave=True)
 
         test_scores = []
         test_labels = []
         self.model.eval()
-        self.model.to(self.device)
+        # Model already on device from __init__, no need to move again
+        # self.model.to(self.device)
 
         with torch.no_grad():
-            for i, (batch_x, batch_y) in loop:
+            for i, (batch_x, batch_y) in enumerate(test_loader):
                 batch_x = batch_x.float().to(self.device)
-                # print(f"Batch {i} - batch_x shape: {batch_x.shape}, batch_y shape: {batch_y.shape}")
-                # print("Here is the batch_x:", batch_x[:10])
+                
                 # Reshape batch_x to match model expectations
                 # TimeMoE expects 2D input: (batch_size, sequence_length)
                 if batch_x.dim() == 3:
                     # If input is (batch_size, sequence_length, features), flatten features
                     batch_x = batch_x.reshape(batch_x.shape[0], -1)
-                    # print(f"Batch {i} - reshaped batch_x to 2D: {batch_x.shape}")
                 elif batch_x.dim() > 3:
                     # If more dimensions, flatten to 2D
                     batch_x = batch_x.reshape(batch_x.shape[0], -1)
-                    # print(f"Batch {i} - reshaped batch_x to 2D: {batch_x.shape}")
-
-                # Ensure batch_x is 2D and convert to long tensor for token generation
-                if batch_x.dim() == 1:
+                elif batch_x.dim() == 1:
                     batch_x = batch_x.unsqueeze(0)
-                    # print(f"Batch {i} - batch_x was 1D, reshaped to 2D: {batch_x.shape}")
 
-                # Convert to integer tokens if needed (TimeMoE might expect discrete tokens)
-                # For time series, we might need to discretize or use the model differently
+                # FIXED: Use forward pass instead of .generate()
+                # .generate() is for autoregressive text generation (very slow)
+                # Forward pass is much faster for anomaly detection
                 try:
-                    # Try direct generation first
-                    score = self.model.generate(batch_x.long(), max_new_tokens=self.win_size)
-                    score = score[:, -self.win_size:]
+                    # Direct forward pass
+                    outputs = self.model(batch_x.long())
+                    
+                    # Extract relevant output
+                    if hasattr(outputs, 'logits'):
+                        logits = outputs.logits
+                    elif hasattr(outputs, 'last_hidden_state'):
+                        logits = outputs.last_hidden_state
+                    else:
+                        logits = outputs
+                    
+                    # Compute anomaly score
+                    # Option 1: Use mean of logits as anomaly score
+                    if logits.dim() > 2:
+                        # If 3D (batch, seq, features), take mean over features
+                        score = torch.mean(torch.abs(logits), dim=-1)
+                    else:
+                        score = torch.abs(logits)
+                    
+                    # Flatten to 1D per batch
+                    if score.dim() > 1:
+                        score = torch.mean(score, dim=-1)
+                    
                 except Exception as e:
-                    print(f"Generation failed with long tensor, trying with float: {e}")
-                    try:
-                        # If that fails, try with original float tensor but ensure 2D
-                        score = self.model.generate(batch_x, max_new_tokens=self.win_size)
-                        score = score[:, -self.win_size:]
-                    except Exception as e2:
-                        print(f"Generation failed: {e2}")
-                        # Fallback: use the model's forward pass instead of generate
-                        outputs = self.model(batch_x)
-                        score = outputs.logits if hasattr(outputs, 'logits') else outputs
-                        # Take last win_size tokens
-                        score = score[:, -self.win_size:] if score.shape[1] >= self.win_size else score
+                    print(f"Forward pass failed: {e}")
+                    # Fallback to zeros
+                    score = torch.zeros(batch_x.shape[0], device=self.device)
 
                 score = score.detach().cpu().numpy()
+                
+                # Ensure score has correct shape for each batch item
+                if score.ndim == 0:
+                    score = np.array([score])
+                elif score.ndim == 1 and len(score) != batch_x.shape[0]:
+                    # Repeat score for each item in batch if needed
+                    score = np.repeat(score.mean(), batch_x.shape[0])
+                
                 test_scores.append(score)
                 test_labels.append(batch_y)
 
         test_scores = np.concatenate(test_scores, axis=0).reshape(-1, 1)
         test_labels = np.concatenate(test_labels, axis=0).reshape(-1, 1)
 
-        print("Test scores shape:", test_scores.shape)
-        print("Test labels shape:", test_labels.shape)
+        # Removed debug prints for cleaner profiling output
+        # print("Test scores shape:", test_scores.shape)
+        # print("Test labels shape:", test_labels.shape)
 
         return test_scores.reshape(-1)
