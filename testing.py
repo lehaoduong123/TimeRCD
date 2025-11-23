@@ -247,7 +247,7 @@ if __name__ == '__main__':
             }
             all_results.append(result_dict)
         file_count += 1
-        if file_count > 10:
+        if file_count == 3:
                 # Convert results to DataFrame and save to CSV
             if all_results:
                 results_df = pd.DataFrame(all_results)
