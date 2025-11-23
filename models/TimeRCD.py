@@ -29,8 +29,8 @@ class TimeRCDPretrainTester:
         # Load model
         self.model = TimeSeriesPretrainModel(config).to(self.device)
         self.load_checkpoint(checkpoint_path)
-        # self.model.eval() # Default was eval() which causes deterministic results
-        self.model.train() # Enable train() mode if you want stochastic results (Dropout active)
+        self.model.eval()  # Set to eval mode for inference (deterministic, no dropout)
+        # self.model.train() # Use train() mode only if you want stochastic results (Dropout active)
         
         print(f"Model loaded on device: {self.device}")
         print(f"Model training mode: {self.model.training}")

@@ -4,6 +4,10 @@
 
 import sys
 import os
+# Force CPU mode if CUDA is not properly compiled in PyTorch
+# Uncomment the line below to use GPU, but only if PyTorch has CUDA support
+# os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
@@ -17,8 +21,6 @@ from utils.slidingWindows import find_length_rank
 from model_wrapper import *
 from HP_list import Optimal_Uni_algo_HP_dict, Optimal_Multi_algo_HP_dict
 import os
-# Cuda devices
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 # seeding
 
 

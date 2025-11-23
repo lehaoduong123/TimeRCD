@@ -482,7 +482,7 @@ class basic_metricor():
     #     return result
 
     def metric_F1_T(self, labels: torch.Tensor, scores: torch.Tensor, use_parallel=True, 
-                    parallel_method='chunked', chunk_size=10, max_workers=8):
+                    parallel_method='chunked', chunk_size=16, max_workers=16):
         """
         Computes the F1 score with optional parallel processing.
 
@@ -1697,7 +1697,7 @@ class basic_metricor():
 
     #     return best_result['f1'], best_result['precision'], best_result['recall']
 
-    def metric_Affiliation_chunked(self, label, score, chunk_size=30, num_workers=4):
+    def metric_Affiliation_chunked(self, label, score, chunk_size=30, num_workers=16):
         """
         Simple chunked parallel processing
         """
