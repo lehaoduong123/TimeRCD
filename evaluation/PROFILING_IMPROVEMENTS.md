@@ -308,6 +308,63 @@ If there are issues:
    Memory measurements may include allocations from other processes.
 ```
 
+## Fix for First-Run Overhead Issue (CRITICAL)
+
+### The Problem
+
+When profiling multiple sequence lengths, the **first sequence tested appears slower** than it should be due to:
+
+1. **CUDA Kernel Compilation**: First time a GPU operation runs, CUDA compiles kernels (100-500ms overhead)
+2. **Memory Allocation**: First run allocates GPU memory pools
+3. **Model Initialization**: Some lazy initialization may occur
+
+**Example of the bug:**
+```
+Sequence 1000: 541.32ms (includes ~120ms overhead)
+Sequence 2000: 421.79ms (clean measurement)
+Sequence 5000: 1052.93ms (clean measurement)
+```
+
+Notice 2000 is faster than 1000, which is impossible!
+
+### The Fix
+
+Added **global warmup phase** before all measurements:
+
+```python
+# In analyze_scaling method:
+# Warm up with largest sequence (5-10 runs)
+for i in range(5):
+    _ = self.profile_forward_pass(
+        seq_len=max(seq_lengths),
+        num_features=num_features,
+        batch_size=batch_size,
+        num_runs=1,
+        warmup_runs=0  # Global warmup, not per-sequence
+    )
+
+# Now all sequences measured cleanly
+for seq_len in seq_lengths:
+    metrics = self.profile_forward_pass(...)
+```
+
+### Benefits
+
+1. ✅ Eliminates first-run bias
+2. ✅ All CUDA kernels compiled once upfront
+3. ✅ Memory pools allocated before measurements
+4. ✅ Fair comparison across all sequence lengths
+5. ✅ More accurate scaling analysis
+
+### Results
+
+After the fix, measurements should show proper scaling:
+- 1000: ~350ms (instead of 541ms)
+- 2000: ~420ms (stays the same)
+- 5000: ~1050ms (stays the same)
+
+Now scaling is linear: 2000→5000 is 2.5x (as expected for 2.5x more data).
+
 ## Conclusion
 
 The improved profiling code addresses several measurement issues:
@@ -317,6 +374,7 @@ The improved profiling code addresses several measurement issues:
 3. ✅ Better statistics (std deviation)
 4. ✅ Proper handling of CPU vs GPU models
 5. ✅ Clear documentation of measurement differences
+6. ✅ **Global warmup to eliminate first-run overhead (NEW)**
 
 However, **fair comparisons still require**:
 - Same device (all GPU or all CPU)

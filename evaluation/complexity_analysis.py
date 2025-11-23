@@ -973,6 +973,31 @@ class ComplexityProfiler:
         print(f"Features: {num_features}, Batch size: {batch_size}")
         print("-" * 60)
         
+        # GLOBAL WARMUP: Prevent first-run overhead (CUDA kernel compilation, memory allocation)
+        print("\n" + "=" * 60)
+        print("Global warmup to eliminate first-run overhead...")
+        print("=" * 60)
+        max_seq = max(seq_lengths)
+        print(f"Warming up with largest sequence length ({max_seq}) to compile CUDA kernels...")
+        
+        for i in range(5):
+            print(f"  Warmup run {i+1}/5...", end=" ", flush=True)
+            try:
+                _ = self.profile_forward_pass(
+                    seq_len=max_seq,
+                    num_features=num_features,
+                    batch_size=batch_size,
+                    num_runs=1,
+                    warmup_runs=0  # Skip per-sequence warmup since we're doing global warmup
+                )
+                print("✓")
+            except Exception as e:
+                print(f"⚠ Warning: {e}")
+        
+        print("=" * 60)
+        print("Starting measurements...")
+        print("=" * 60 + "\n")
+        
         for seq_len in seq_lengths:
             print(f"Testing sequence length: {seq_len}...", end=" ", flush=True)
             try:
@@ -980,7 +1005,8 @@ class ComplexityProfiler:
                     seq_len=seq_len,
                     num_features=num_features,
                     batch_size=batch_size,
-                    num_runs=num_runs
+                    num_runs=num_runs,
+                    warmup_runs=2  # Reduced since global warmup already done
                 )
                 results.append(metrics)
                 train_ms = metrics.training_step_time * 1000
