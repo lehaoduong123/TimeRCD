@@ -258,10 +258,10 @@ if __name__ == '__main__':
         print(f"\nAll results saved to {output_filename}")
         print(f"Total file processed: {len(all_results)}")
         print(f"Results shape: {results_df.shape}")
-        if all_logits:
-            logits_df = pd.DataFrame(all_logits)
-            logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}.csv'
-            logits_df.to_csv(logits_output_filename, index=False)
-            print(f"Logits results saved to {logits_output_filename}")
+        # if all_logits:
+        #     logits_df = pd.DataFrame(all_logits)
+        #     logits_output_filename = f'{"Multi" if Multi else "Uni"}_{args.AD_Name}_win_{args.win_size}_seed_{args.seed}.csv'
+        #     logits_df.to_csv(logits_output_filename, index=False)
+        #     print(f"Logits results saved to {logits_output_filename}")
     else:
         print("No results to save.")
