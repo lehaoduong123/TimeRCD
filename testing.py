@@ -121,6 +121,17 @@ if __name__ == '__main__':
                 # "YAHOO",
                 # "UCR"
                 ]
+        # dataset = ["IOPS",
+        #         "MGAB",
+        #         "NAB",
+        #         "NEK",
+        #         "Power",
+        #         "SED",
+        #         "Stock",
+        #         "TODS",
+        #         "WSD",
+        #         "YAHOO",
+        #         "UCR"]
         base_dir = 'datasets/TSB-AD-U/'
         files = os.listdir(base_dir)
 
@@ -128,7 +139,7 @@ if __name__ == '__main__':
     file_count = 0
     # ## ArgumentParser
     for file in files:
-
+        # if filter not in diff
         if any(filter_item in file for filter_item in filter_list):
             print(f"Skipping file: {file} due to filter criteria.")
             continue
@@ -246,8 +257,9 @@ if __name__ == '__main__':
                 'error_message': output
             }
             all_results.append(result_dict)
+
         file_count += 1
-        if file_count == 3:
+        if file_count == 100:
                 # Convert results to DataFrame and save to CSV
             if all_results:
                 results_df = pd.DataFrame(all_results)
