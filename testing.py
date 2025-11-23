@@ -209,19 +209,19 @@ if __name__ == '__main__':
             }
             all_results.append(result_dict)
 
-            if logits is not None:
-                logit_dict = {
-                    'filename': args.filename,
-                    'AD_Name': args.AD_Name,
-                    'sliding_window': slidingWindow,
-                    'train_index': train_index,
-                    'data_shape': f"{data.shape[0]}x{data.shape[1]}",
-                    'output_length': len(logits),
-                    'label_length': len(label_test),  # Use label_test length
-                    'aligned_length': min_length,
-                    **evaluation_result_logits  # Unpack all evaluation metrics for logits
-                }
-                all_logits.append(logit_dict)
+            # if logits is not None:
+            #     logit_dict = {
+            #         'filename': args.filename,
+            #         'AD_Name': args.AD_Name,
+            #         'sliding_window': slidingWindow,
+            #         'train_index': train_index,
+            #         'data_shape': f"{data.shape[0]}x{data.shape[1]}",
+            #         'output_length': len(logits),
+            #         'label_length': len(label_test),  # Use label_test length
+            #         'aligned_length': min_length,
+            #         **evaluation_result_logits  # Unpack all evaluation metrics for logits
+            #     }
+            #     all_logits.append(logit_dict)
             # Save value, label, and anomaly scores to pickle file
             if args.save:
                 output_filename = f'{args.filename.split(".")[0]}_results.pkl'
