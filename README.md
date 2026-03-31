@@ -74,8 +74,8 @@ pip install jaxtyping einops pandas numpy scikit-learn transformers torch torchv
 Download the pre-trained model checkpoints from Hugging Face:
 
 ```bash
-huggingface-cli download thu-sail-lab/Time-RCD checkpoints.zip --local-dir ./
-unzip checkpoints.zip
+hf download thu-sail-lab/Time-RCD --include "best_model/pretrain_checkpoint_best_uni.pth" --local-dir .
+hf download thu-sail-lab/Time-RCD --include "best_model/pretrain_checkpoint_best_multi.pth" --local-dir .
 ```
 
 ### Single Variable Time Series
